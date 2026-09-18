@@ -1,0 +1,77 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import device_meta, error_list, status_pill %}
+{% block title %}Add device · bioseasy{% endblock %}
+{% block content %}
+<h1>Add a device</h1>
+<p class="lede">A device has to trust this server once. Pick the way that fits where the device and
+  its USB cable are.</p>
+
+<section class="card" id="code-hand-off">
+  <h2>Pair from your own computer</h2>
+  <p class="meta">The usual way: the device stays where it is and never touches this server.</p>
+  <p class="meta">Connect the device to your computer, run one command or the pairing app (macOS,
+    Windows or Linux), then tap Trust.</p>
+  {% if pair_code_error %}<p class="flash bad">{{ pair_code_error }}</p>{% endif %}
+  <form method="post" action="/add/pair-code">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="button">Start pairing</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Plugged into this server</h2>
+  <p class="meta">For a device on this server's own USB port.</p>
+  <form method="post" action="/add/scan">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="button">Scan now</button>
+  </form>
+  {% for d in seen %}
+  {% set p = pairings.get(d.udid) %}
+  <div class="device-row">
+    <div class="who">
+      <h3>{{ d.name or "Unnamed device" }}</h3>
+      <p class="meta">{{ device_meta(d.product_type, d.os_version) }} · via {{ d.transport }}</p>
+    </div>
+    <div class="state">
+      {{ status_pill('ok' if d.paired else 'muted', 'Paired' if d.paired else 'Not paired') }}
+    </div>
+    {% if p and p.state in ("pending", "running") %}
+    <a class="button" href="/add/pairing/{{ d.udid }}">Pairing…</a>
+    {% elif p and p.state == "failed" %}
+    <a class="button" href="/add/pairing/{{ d.udid }}">Pairing failed</a>
+    {% else %}
+    <form method="post" action="{{ '/add' if d.paired else '/add/pair' }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="udid" value="{{ d.udid }}">
+      <button class="button">{{ "Add" if d.paired else "Pair and add" }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="meta">No new device found. Connect the device to this server by USB, unlock it, and
+    scan again.</p>
+  {% endfor %}
+</section>
+
+<section class="card" id="upload">
+  <h2>Upload a pair record</h2>
+  <p class="meta">For a device already paired on another computer.</p>
+  {{ error_list(upload_errors, "pair-record-errors") }}
+  <form method="post" action="/add/pair-record" enctype="multipart/form-data" class="stack narrow-form" {% if upload_errors %}aria-describedby="pair-record-errors"{% endif %}>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Device UDID <input name="udid" value="{{ upload_udid or '' }}" autocomplete="off" spellcheck="false" required></label>
+    <label>Pair record file <input name="record" type="file" accept=".plist,application/xml,application/octet-stream" required></label>
+    <button class="button">Upload and add</button>
+  </form>
+  <details>
+    <summary>How to create the file</summary>
+    <p>With <a href="https://docs.astral.sh/uv/">uv</a> installed, connect and unlock the device, then run:</p>
+    <pre><code>uvx --from pymobiledevice3==11.12.5 pymobiledevice3 lockdown pair
+uvx --from pymobiledevice3==11.12.5 pymobiledevice3 lockdown wifi-connections on
+uvx --from pymobiledevice3==11.12.5 pymobiledevice3 usbmux list
+uvx --from pymobiledevice3==11.12.5 pymobiledevice3 lockdown save-pair-record device.plist</code></pre>
+    <p>Tap Trust on the device when asked. <code>usbmux list</code> shows the UDID. Delete the file after uploading: it grants access to the device.</p>
+  </details>
+</section>
+{% endblock %}

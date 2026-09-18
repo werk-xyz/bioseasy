@@ -1,0 +1,115 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import section_nav %}
+{% block title %}Users · bioseasy{% endblock %}
+{% block content %}
+<h1>Users</h1>
+{% if admin_nav %}{{ section_nav(admin_nav, request.url.path, "Admin") }}{% endif %}
+<p class="lede">Sign-in accounts and their roles. A member sees only their own devices.</p>
+<p class="meta">An account that signs in through single sign-on has no password here. Linking and
+  unlinking happens on that user's own Settings page.</p>
+
+{% if not action_error and saved %}
+<p class="flash">Saved.</p>
+{% endif %}
+{% if action_error %}
+<p class="flash bad" role="alert">{{ action_error }}</p>
+{% endif %}
+{% if users_without_email %}
+<p class="flash bad" role="alert">{{ users_without_email | length }} account(s) have no email address:
+  {% for u in users_without_email %}{{ u.username }}{% if not loop.last %}, {% endif %}{% endfor %}.
+  These were created before an address was required. Single sign-on cannot match an identity to them
+  until each one has an address; fill it in below.</p>
+{% endif %}
+
+<table class="runs">
+  <thead>
+    <tr>
+      <th>Username</th><th>Email</th><th>Role</th><th>Sign-in</th><th>Created</th><th>Last sign-in</th>
+      <th>Devices</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for u in local_users %}
+    <tr>
+      <td>{{ u.username }}{% if u.id == user.id %} <small class="meta">(you)</small>{% endif %}</td>
+      <td>
+        {# An account created before the address requirement existed has no address, and none may
+           be invented for it: the form is how it gets one, and until it does, single sign-on
+           cannot reach it. #}
+        <form method="post" action="/admin/users/{{ u.id }}/email" class="inline-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input name="email" type="email" maxlength="254" required value="{{ u.email or '' }}"
+            aria-label="Email for {{ u.username }}" placeholder="no address yet">
+          <button class="link">Save</button>
+        </form>
+      </td>
+      <td>
+        {% set last_admin = u.role == "admin" and admin_count <= 1 %}
+        <form method="post" action="/admin/users/{{ u.id }}/role" class="inline-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <select name="role" onchange="this.form.requestSubmit()" {% if last_admin %}disabled{% endif %}
+            aria-label="Role for {{ u.username }}">
+            <option value="admin" {% if u.role == "admin" %}selected{% endif %}>Admin</option>
+            <option value="member" {% if u.role == "member" %}selected{% endif %}>Member</option>
+          </select>
+          <noscript><button class="button">Set role</button></noscript>
+        </form>
+        {% if last_admin %}<p class="meta">The last remaining admin cannot be demoted.</p>{% endif %}
+      </td>
+      <td>
+        {% if u.has_password and u.oidc_link_count %}Password and SSO
+        {% elif u.oidc_link_count %}SSO only
+        {% elif u.has_password %}Password
+        {% else %}None set up yet{% endif %}
+      </td>
+      <td><time datetime="{{ u.created_at }}">{{ u.created_at | ago }}</time></td>
+      <td>{% if u.last_sign_in_at %}<time datetime="{{ u.last_sign_in_at }}">{{ u.last_sign_in_at | ago }}</time>{% else %}never{% endif %}</td>
+      <td>{{ u.device_count }}</td>
+      <td>
+        {% if u.id == user.id %}
+        <span class="meta">Use Settings to manage your own account</span>
+        {% elif u.role == "admin" and admin_count <= 1 %}
+        <span class="meta">Last remaining admin</span>
+        {% else %}
+        <form method="post" action="/admin/users/{{ u.id }}/remove" onsubmit="return confirm('Remove {{ u.username }}? This cannot be undone.');">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="link">Remove</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8">No local users yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Create a user</h2>
+{% if create_error %}<p class="flash bad" role="alert">{{ create_error }}</p>{% endif %}
+<form method="post" action="/admin/users" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Username
+    <input name="username" maxlength="64" required value="{{ create_values.username if create_values else '' }}">
+  </label>
+  <label>Email <small>(required; single sign-on matches an identity to an account by its address{% if invite_possible %},
+    and an invitation with a link to this server is sent to it{% else %}. No email connector is set up, so no
+    invitation can be sent yet{% endif %})</small>
+    <input name="email" type="email" maxlength="254" autocomplete="off" required
+      value="{{ create_values.email if create_values else '' }}">
+  </label>
+  <fieldset>
+    <legend>Role</legend>
+    {# checkbox-row, or `.stack label { display: grid }` turns each radio into a grid item and
+       stretches it across the whole form - measured at 937px wide. #}
+    <label class="checkbox-row"><input type="radio" name="role" value="member"
+      {% if not create_values or create_values.role != "admin" %}checked{% endif %}> Member: sees only their own devices</label>
+    <label class="checkbox-row"><input type="radio" name="role" value="admin"
+      {% if create_values and create_values.role == "admin" %}checked{% endif %}> Admin: sees and manages everything</label>
+  </fieldset>
+  <label>Initial password <small>(at least {{ min_password_length }} characters; the user can change it later under Settings)</small>
+    <input type="password" name="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
+  </label>
+  <button class="button">Create user</button>
+</form>
+{% endblock %}

@@ -1,0 +1,497 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Tokens from docs/design.md. Change them there first. */
+:root {
+  --paper: #f2f5f4; --surface: #ffffff; --surface-sunken: #e9efec;
+  --ink: #0f1a17; --muted: #5c6d67; --line: #dfe6e2;
+  --accent: #0e7a52; --on-accent: #ffffff; --warn: #95580a; --bad: #b0302a;
+  --shadow-pop: 0 8px 24px rgba(8, 20, 16, .12);
+  /* The serif sets the wordmark and nothing else (docs/design.md): in the interface it read as a
+     book, on the mark it reads as a mark. */
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 7px; --radius: 11px; --radius-lg: 16px; --gap: 1rem;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0c1011; --surface: #151b1c; --surface-sunken: #1d2426;
+    --ink: #e8edeb; --muted: #99a8a3; --line: #252f31;
+    --accent: #46c68d; --on-accent: #06120d; --warn: #e0a24a; --bad: #f08a80;
+    --shadow-pop: 0 8px 24px rgba(0, 0, 0, .45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0c1011; --surface: #151b1c; --surface-sunken: #1d2426;
+  --ink: #e8edeb; --muted: #99a8a3; --line: #252f31;
+  --accent: #46c68d; --on-accent: #06120d; --warn: #e0a24a; --bad: #f08a80;
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, .45);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+/* The `hidden` attribute works only through the browser's own `[hidden] { display: none }`, which
+   has specificity (0,1,0) - so any class rule setting `display` outranks it. `.activity-indicator
+   .popover` (0,2,0) did exactly that: the gear's popover stayed visible no matter how often the
+   script toggled the attribute, so it could be opened but never closed.
+   Declared once here, globally and with !important, so `hidden` means hidden everywhere in this
+   app instead of depending on what some later rule happens to set. */
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--paper); color: var(--ink);
+  font: 16px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+main { max-width: 68rem; margin: 0 auto; padding-block: 2rem 4rem; padding-inline: 1.25rem; }
+/* The file browser's columns need width more than the text needs a measure. Capped rather
+   than unbounded: on a very wide screen a strip running the whole desk is harder to read, not
+   easier. 100vw is deliberately not used anywhere here - it includes the scrollbar on some
+   platforms and would make the body scroll sideways. */
+main.wide { max-width: 110rem; }
+
+/* Hierarchy comes from size, weight and tracking - not from a second typeface. Negative tracking
+   on the large sizes is what keeps a big line from looking loose (docs/design.md, "Type"). */
+h1, h2, h3 { font-weight: 600; line-height: 1.2; }
+h1 { font-size: 1.75rem; letter-spacing: -.021em; margin: 0 0 .35rem; }
+h2 { font-size: 1.1875rem; letter-spacing: -.011em; margin: 2rem 0 .6rem; }
+h3 { font-size: 1rem; margin: 0; }
+a { color: var(--accent); text-underline-offset: .15em; }
+code { font-family: var(--mono); font-size: .875em; overflow-wrap: anywhere; }
+.meta { color: var(--muted); margin: 0; font-size: .875rem; }
+/* The quiet label above a group of rows. Uppercase and tracked, never bold body text. */
+.eyebrow { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin: 0 0 .5rem; }
+/* One sentence under a page title, the length of a subtitle and no longer. */
+.lede { color: var(--muted); margin: 0 0 1.5rem; max-width: 60ch; }
+
+/* ---- Header -------------------------------------------------------------------------------- */
+/* Three groups and a clear order: who you are (brand), where you can go (nav), what is going on
+   (status cluster), rather than one undifferentiated row. */
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem;
+  padding: .55rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--surface);
+  position: sticky; top: 0; z-index: 10; }
+.brand { display: flex; align-items: center; gap: .55rem; color: var(--ink); text-decoration: none; }
+.brand-text { display: flex; flex-direction: column; line-height: 1.1; }
+.brand-name { font-family: var(--serif); font-size: 1.3rem; font-weight: 600; letter-spacing: -.01em; }
+.brand .slogan { font-size: .6875rem; font-weight: 400; color: var(--muted); letter-spacing: .01em; }
+
+.bar nav { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .35rem; }
+.bar nav a, .bar nav .link { white-space: nowrap; }
+.bar nav a { color: var(--muted); text-decoration: none; font-size: .9375rem; font-weight: 500;
+  padding: .35rem .6rem; border-radius: var(--radius-sm); }
+.bar nav a:hover { color: var(--ink); background: var(--surface-sunken); text-decoration: none; }
+.bar nav a[aria-current] { color: var(--ink); background: var(--surface-sunken); font-weight: 600; }
+.bar nav form { margin: 0; }
+.link { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.bar nav .link { color: var(--muted); font-size: .9375rem; font-weight: 500; padding: .35rem .6rem;
+  border-radius: var(--radius-sm); }
+.bar nav .link:hover { color: var(--ink); background: var(--surface-sunken); }
+
+/* The right-hand cluster: storage, activity, device switcher. Quiet by default, because none of
+   it is a destination - it reports state and offers one shortcut. */
+.bar-status { display: flex; align-items: center; gap: .35rem; margin-left: auto; }
+
+.storage-bar { display: flex; align-items: center; gap: .45rem; min-width: 0;
+  padding: .3rem .6rem; border-radius: 999px; background: var(--surface-sunken); }
+.storage-bar-track { display: inline-block; width: 3.5rem; height: .375rem; border-radius: 999px;
+  background: var(--line); overflow: hidden; flex: none; }
+.storage-bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.storage-bar-fill.low { background: var(--warn); }
+.storage-bar-text { font-size: .8125rem; color: var(--muted); white-space: nowrap; }
+.storage-bar-text.low { color: var(--warn); font-weight: 600; }
+.storage-bar-text.muted { font-style: italic; }
+@media (max-width: 1100px) { .storage-bar-track { display: none; } }
+
+/* ---- Activity indicator -------------------------------------------------------------------- */
+.activity-indicator { position: relative; }
+.activity-indicator .icon-button { position: relative; }
+.icon-gear.spin { animation: activity-spin 2.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .icon-gear.spin { animation: none; } }
+@keyframes activity-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.activity-count { position: absolute; top: 3px; right: 3px; min-width: 1rem; height: 1rem; padding: 0 .2rem;
+  border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: .65rem; font-weight: 700;
+  line-height: 1rem; text-align: center; }
+/* Badge shown instead of the count once nothing is running: a check (succeeded) or a triangle
+   (failed/not confirmed) - two different shapes, never colour alone, matching docs/design.md.
+   The word lives in the button's aria-label; these are aria-hidden reinforcement. */
+.activity-badge { position: absolute; top: 3px; right: 3px; width: 1rem; height: 1rem; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center; color: var(--on-accent); }
+.activity-badge-ok { background: var(--accent); }
+.activity-badge-warn { background: var(--warn); border-radius: 3px; }
+.activity-indicator .popover { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; min-width: 17rem;
+  max-width: 22rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-pop); padding: .85rem; display: grid; gap: .9rem; }
+.activity-indicator .popover section + section { border-top: 1px solid var(--line); padding-top: .75rem; }
+.popover-heading { font-size: .75rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); margin: 0 0 .5rem; }
+.activity-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+.activity-list li { border-bottom: 1px solid var(--line); padding-bottom: .5rem; }
+.activity-list li:last-child { border-bottom: 0; padding-bottom: 0; }
+.activity-outcome-succeeded { color: var(--accent); }
+.activity-outcome-failed, .activity-outcome-not_confirmed { color: var(--warn); }
+
+/* ---- Toast --------------------------------------------------------------------------------- */
+.toast-region { position: fixed; top: 4.5rem; right: 1rem; z-index: 30; display: grid; gap: .5rem;
+  max-width: min(22rem, calc(100vw - 2rem)); }
+.toast { display: flex; align-items: flex-start; gap: .5rem; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-pop);
+  padding: .6rem .5rem .6rem .85rem; cursor: pointer; }
+.toast p { margin: 0; font-size: .9rem; flex: 1; }
+.toast-dismiss { flex: none; background: none; border: 0; color: var(--muted); font-size: 1.1rem; line-height: 1;
+  cursor: pointer; padding: .15rem .4rem; border-radius: var(--radius-sm); }
+.toast-dismiss:hover { background: var(--surface-sunken); color: var(--ink); }
+.toast:focus-visible, .toast-dismiss:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* ---- Section navigation -------------------------------------------------------------------- */
+/* The row of sub-pages inside one area (Admin, Settings). Plain links, never a JavaScript tab
+   widget - each entry is its own page with its own address, so it survives a reload, a bookmark
+   and the back button. The current entry is marked by aria-current="page"; the pill below only
+   restates what that already says. */
+.section-nav { margin: 0 0 1.75rem; }
+.section-nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: .25rem; margin: 0; padding: .25rem;
+  background: var(--surface-sunken); border-radius: var(--radius); width: fit-content; max-width: 100%; }
+.section-nav a { display: inline-block; padding: .4rem .8rem; color: var(--muted);
+  text-decoration: none; border-radius: var(--radius-sm); font-size: .9375rem; font-weight: 500; }
+.section-nav a:hover { color: var(--ink); }
+.section-nav a[aria-current] { background: var(--surface); color: var(--ink); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(8, 20, 16, .06); }
+
+/* ---- Cards and row lists ------------------------------------------------------------------- */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  padding: 1.15rem 1.25rem; }
+.card + .card { margin-top: 1rem; }
+/* One chapter of a long page: heading, a hairline under it, then the content. Pages like the
+   device detail view used to run four headings and their tables together on the ground, so the
+   reader had to find the boundaries from spacing alone. */
+.panel { margin: 1.75rem 0; }
+.panel > h2:first-child { margin: 0 0 .9rem; padding-bottom: .7rem;
+  border-bottom: 1px solid var(--line); }
+.panel > .meta:last-child { margin-top: .6rem; }
+/* A card whose children are rows separated by hairlines: one subject per row, no repeated
+   borders, no line after the last one. */
+.rows { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  overflow: hidden; }
+.rows > * { padding: 1rem 1.25rem; border-top: 1px solid var(--line); margin: 0; }
+.rows > *:first-child { border-top: 0; }
+
+/* Said on the personal Settings pages when an admin is looking at them: these are their own
+   account's settings, the system-wide ones live under Admin. Quieter than a flash - nothing
+   happened, it only says where you are. */
+.scope-note { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  color: var(--muted); padding: .7rem .9rem; margin: 0 0 1.5rem; font-size: .875rem; }
+
+/* The Admin overview's list of sections: each link and its sentence read as one block, and the
+   blocks are separated like any other row list rather than running together. */
+.section-index { list-style: none; margin: 1.25rem 0 0; padding: 0; }
+.section-index > li { display: grid; gap: .2rem; }
+.section-index > li > a { font-weight: 600; text-decoration: none; }
+.section-index > li > a:hover { text-decoration: underline; }
+.section-index .meta { max-width: 62ch; }
+
+/* ---- Device switcher ----------------------------------------------------------------------- */
+.switcher { position: relative; }
+.switcher summary { list-style: none; cursor: pointer; border: 1px solid var(--line);
+  border-radius: 999px; padding: .35rem 1.9rem .35rem .85rem; background: var(--surface);
+  position: relative; font-size: .875rem; white-space: nowrap; }
+.switcher summary::-webkit-details-marker { display: none; }
+.switcher summary::after { content: "⌄"; position: absolute; right: .75rem; top: .1rem; color: var(--muted); }
+.switcher summary:hover { background: var(--surface-sunken); }
+.switcher ul { position: absolute; right: 0; top: calc(100% + 6px); margin: 0; padding: .3rem; list-style: none;
+  min-width: 12rem; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow-pop); z-index: 20; }
+.switcher li a { display: block; padding: .45rem .65rem; color: var(--ink); text-decoration: none;
+  white-space: nowrap; border-radius: var(--radius-sm); font-size: .9375rem; }
+.switcher li a:hover { background: var(--surface-sunken); }
+.switcher li a[aria-current] { font-weight: 600; }
+
+/* ---- Buttons and forms --------------------------------------------------------------------- */
+/* A button never stretches to the width of its container on its own. Inside `.stack` (a grid) it
+   used to, which is what made every form read as generated rather than designed. */
+.button { display: inline-flex; align-items: center; justify-content: center; justify-self: start;
+  background: var(--accent); color: var(--on-accent); border: 0; border-radius: var(--radius);
+  padding: .6rem 1.15rem; font: inherit; font-weight: 600; font-size: .9375rem; text-decoration: none;
+  cursor: pointer; min-height: 44px; }
+.button:hover { filter: brightness(1.06); }
+.button.secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+.button.secondary:hover { background: var(--surface-sunken); filter: none; }
+.button.quiet { background: none; color: var(--accent); border: 0; padding-inline: .35rem; min-height: 36px; }
+.button.quiet:hover { background: var(--surface-sunken); filter: none; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: 1rem 0; }
+/* A column of fields is bounded, not stretched to the window: a password box 650px wide tells the
+   user nothing about what belongs in it. Wider content (a connector's URL, a textarea) opts out
+   with .stack.wide. */
+.stack { display: grid; gap: 1rem; max-width: 30rem; }
+.stack.wide { max-width: none; }
+.stack label { display: grid; gap: .35rem; font-weight: 600; font-size: .9375rem; }
+.stack small { font-weight: 400; color: var(--muted); }
+.stack label.checkbox-row { display: flex; flex-direction: row; align-items: center; gap: .55rem; }
+/* "Pick one of these" is a fieldset, which is the right element but comes with the browser's own
+   legal-form border. Labels inside it need .checkbox-row, or the rule above stretches their radio
+   across the full form width. */
+/* A fieldset is a chapter of a long settings form, so it looks like one: its own surface, its own
+   edge, and a legend that reads as a heading. Without this, five of them in a row on the
+   device settings page are five thin outlines on one flat ground, with nothing telling the eye
+   where one setting ended and the next began. */
+.stack fieldset { background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); margin: .35rem 0; padding: .35rem 1.1rem 1.1rem;
+  display: grid; gap: .55rem; }
+.stack legend { font-weight: 600; padding: 0 .45rem; margin-left: -.45rem; font-size: 1rem;
+  letter-spacing: -.006em; }
+.checkbox-row input { min-height: 0; }
+input, select, textarea { font: inherit; font-size: .9375rem; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .55rem .7rem; min-height: 44px;
+  max-width: 100%; }
+textarea { min-height: 0; }
+input:hover, select:hover, textarea:hover { border-color: var(--muted); }
+input:focus-visible, select:focus-visible, textarea:focus-visible,
+.button:focus-visible, summary:focus-visible, a:focus-visible, .link:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; }
+.narrow { max-width: 26rem; margin: 3rem auto; }
+/* A form that is one column of fields reads better bounded than floating on the ground. */
+.form-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  padding: 1.25rem; max-width: 34rem; }
+
+/* ---- States -------------------------------------------------------------------------------- */
+/* Word + shape + colour, never colour alone. */
+.health { font-weight: 600; white-space: nowrap; font-size: .9375rem; }
+.health.ok, .health.accent { color: var(--accent); }
+.health.warn { color: var(--warn); }
+.health.bad { color: var(--bad); }
+.health.muted { color: var(--muted); }
+.flash { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius);
+  padding: .7rem .9rem; background: var(--surface); margin: 0 0 1rem; }
+.flash.bad { border-left-color: var(--bad); color: var(--bad); }
+.flash.warn { border-left-color: var(--warn); color: var(--warn); }
+.flash a { color: inherit; }
+
+/* ---- Overview ------------------------------------------------------------------------------ */
+.owner-group { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; margin: 2rem 0 .6rem; }
+.owner-group:first-of-type { margin-top: 1.5rem; }
+/* One device per row inside a card: name and model, state, then the generation strip. The strip
+   shares the remaining width instead of scrolling out of it. */
+.device-row { display: grid; grid-template-columns: minmax(11rem, 1.1fr) minmax(9rem, .9fr) minmax(0, 2fr);
+  gap: 1rem 1.5rem; align-items: center; }
+.device-row h3 { margin: 0 0 .1rem; }
+.device-row h3 a { color: var(--ink); text-decoration: none; }
+.device-row h3 a:hover { text-decoration: underline; }
+.device-row .state > * + * { margin-top: .15rem; }
+/* On "Add a device" the scan results sit directly in a card instead of in a .rows list, so the
+   line between two of them has to come from here. */
+.card > .device-row { margin-top: 1rem; }
+.card > .device-row + .device-row { border-top: 1px solid var(--line); padding-top: 1rem; }
+.empty-state { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius-lg);
+  padding: 2.5rem 1.5rem; text-align: center; }
+.empty-state p { margin: 0 0 .75rem; }
+.empty-state p:last-child { margin-bottom: 0; }
+.empty-state .button { justify-self: center; }
+
+/* ---- The generation strip ------------------------------------------------------------------ */
+/* The one layout primitive. Segments share the width; a summary that needs a scrollbar is not a
+   summary (docs/design.md). */
+.strip { display: flex; gap: .3rem; list-style: none; margin: 0; padding: 0; min-width: 0; }
+.gen { display: grid; gap: .2rem; flex: 1 1 0; min-width: 0; font-size: .75rem; color: var(--muted); }
+.gen .block { height: 1.75rem; border-radius: var(--radius-sm); background: var(--accent);
+  opacity: max(.28, calc(1 - var(--age, 0) * .12)); }
+.gen .label, .gen time { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gen .label { color: var(--ink); font-weight: 600; }
+/* Hatching marks a failed run without relying on colour alone, for colour-blind accessibility. */
+.gen.failed .block { opacity: 1; background: repeating-linear-gradient(135deg, var(--bad) 0 4px, transparent 4px 8px);
+  border: 1px solid var(--bad); }
+.gen.running .block { opacity: 1; background: transparent; border: 2px dashed var(--accent); }
+/* Nobody entered the passcode: not broken, so outlined in the warning colour rather than hatched. */
+.gen.not_confirmed .block { opacity: 1; background: transparent; border: 2px dotted var(--warn); }
+.gen.cancelled .block { opacity: 1; background: transparent; border: 1px solid var(--muted); }
+/* "No runs yet" is one segment, not a row of seven: without this it inherits `flex: 1` and
+   stretches into a full-width empty box, which reads as a broken chart rather than as "nothing
+   here yet". */
+.gen.empty { flex: 0 0 auto; min-width: 7rem; }
+.gen.empty .block { opacity: 1; background: transparent; border: 1px dashed var(--line); }
+
+/* ---- Device page --------------------------------------------------------------------------- */
+.status { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface);
+  padding: 1.15rem 1.25rem; margin: 1.25rem 0; }
+.status-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--gap); }
+.status-line form { margin: 0; }
+.prompt { font-size: 1.0625rem; }
+progress { width: 100%; height: .5rem; accent-color: var(--accent); border-radius: 999px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1.5rem; margin: 0; }
+.facts dt { color: var(--muted); font-size: .9375rem; }
+.facts dd { margin: 0; font-size: .9375rem; }
+
+/* ---- Tables -------------------------------------------------------------------------------- */
+/* Bounded by a card, hairlines inside it only, and a header that is a label rather than a bar. */
+/* A real table on a normal window, so the columns share the width instead of huddling on the left;
+   a scrolling block only where it genuinely does not fit (docs/design.md: only tables, diagrams
+   and code blocks may exceed the page width, each in its own scroller). */
+.runs { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: .9375rem;
+  display: table; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); overflow: hidden; }
+@media (max-width: 700px) { .runs { display: block; overflow-x: auto; } }
+.runs th, .runs td { text-align: left; padding: .7rem .9rem; border-bottom: 1px solid var(--line);
+  vertical-align: top; }
+/* Only the atoms refuse to break - a timestamp, a status pill, a size. Blanket `nowrap` on every
+   cell would push the six-column generations table straight out of its card:
+   with `display: table` a row that cannot wrap has nowhere to go. */
+.runs time, .runs .health, .runs .nowrap { white-space: nowrap; }
+.runs th { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); white-space: nowrap; }
+.runs tbody tr:last-child td { border-bottom: 0; }
+/* The actions column: a row of quiet controls, not a stack of block-level forms. */
+.runs td form { display: inline-block; margin: 0 .5rem 0 0; }
+.runs td form .link { color: var(--accent); }
+
+/* ---- Filters and pager --------------------------------------------------------------------- */
+.filters { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; margin: 0 0 1.25rem;
+  padding: .9rem 1rem; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); }
+.filters label { display: flex; flex-direction: column; gap: .25rem; font-size: .8125rem; color: var(--muted); }
+.filters .button { min-height: 40px; }
+.pager { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; font-size: .9375rem; }
+
+/* ---- Docs ---------------------------------------------------------------------------------- */
+.docs-index { list-style: none; padding: 0; margin: 0; }
+.docs-index a { text-decoration: none; font-weight: 600; }
+.docs-index a:hover { text-decoration: underline; }
+.docs-page { max-width: 68ch; }
+.docs-page h1, .docs-page h2, .docs-page h3 { line-height: 1.25; }
+.docs-page pre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: .85rem 1rem; overflow-x: auto; }
+/* The table itself may be wider than the measure above; only this wrapper scrolls, never the
+   page body (docs/design.md, docs.py's _wrap_tables). */
+.table-scroll { overflow-x: auto; margin: 1.25rem 0; }
+.docs-page table { border-collapse: collapse; width: 100%; margin: 0; }
+.docs-page th, .docs-page td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line); }
+.docs-page th { font-size: .8125rem; color: var(--muted); }
+/* Blockquote token: docs/design.md, "Blockquote". */
+.docs-page blockquote { border-left: 3px solid var(--line); margin: 1.25rem 0; padding: 0 1rem; color: var(--muted); }
+
+/* ---- Footer, icons, utilities -------------------------------------------------------------- */
+.demo-banner { margin: 0; padding: .5rem 1.25rem; font-size: .8125rem; background: var(--surface-sunken);
+  border-bottom: 1px solid var(--line); color: var(--muted); }
+.demo-banner strong { color: var(--ink); }
+.site-footer { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: 1rem 1.25rem;
+  border-top: 1px solid var(--line); color: var(--muted); font-size: .8125rem; }
+.footer-version { color: var(--muted); }
+.footer-version a { color: inherit; text-decoration: none; }
+.footer-version a:hover { text-decoration: underline; }
+.footer-links { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-left: auto; }
+.footer-links a { color: var(--muted); text-decoration: none; }
+.footer-links a:hover { color: var(--ink); text-decoration: underline; }
+
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+  background: none; border: 0; border-radius: var(--radius-sm); padding: 0; color: var(--muted); cursor: pointer; }
+.icon-button:hover { background: var(--surface-sunken); color: var(--ink); }
+.icon-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.icon-button .icon-moon { display: block; }
+.icon-button .icon-sun { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .icon-button .icon-moon { display: none; }
+  :root:not([data-theme="light"]) .icon-button .icon-sun { display: block; }
+}
+:root[data-theme="dark"] .icon-button .icon-moon { display: none; }
+:root[data-theme="dark"] .icon-button .icon-sun { display: block; }
+
+.skip-link { position: absolute; left: .5rem; top: -3rem; z-index: 40; background: var(--surface); color: var(--ink);
+  border: 2px solid var(--accent); border-radius: var(--radius-sm); padding: .4rem .8rem; }
+.skip-link:focus { top: .5rem; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.breadcrumbs { list-style: none; display: flex; flex-wrap: wrap; gap: .3rem; padding: 0; margin: 0 0 1.25rem;
+  font-size: .875rem; }
+.breadcrumbs li:not(:first-child)::before { content: "/"; margin-right: .3rem; color: var(--muted); }
+
+/* ---- Narrow windows ------------------------------------------------------------------------ */
+@media (max-width: 900px) {
+  main { padding-inline: 1rem; }
+  .bar { gap: .4rem .75rem; }
+  .bar nav { order: 3; width: 100%; gap: .1rem; margin-inline: -.6rem; }
+  .bar-status { order: 2; }
+  .device-row { grid-template-columns: 1fr auto; }
+  .device-row .strip, .device-row > form { grid-column: 1 / -1; }
+  h1 { font-size: 1.5rem; }
+}
+@media (max-width: 560px) {
+  /* Name and state stop sharing a line: at this width "Demo iPhone" was breaking mid-name. */
+  .device-row { grid-template-columns: 1fr; gap: .5rem; }
+  /* Four generations instead of seven. Seven segments at phone width truncate their labels to
+     "Not ..." and "2 d a...", which trades the word away and leaves shape and colour carrying the
+     state on their own - exactly what docs/design.md forbids. Fewer, legible segments beat a full
+     row of unreadable ones; the device page still lists every run. */
+  .gen:nth-child(n+5) { display: none; }
+  .gen .label, .gen time { font-size: .6875rem; }
+  .switcher summary { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ---- File browser ---------------------------------------------------------------------------- */
+/* Columns in the Finder sense: generations, then areas, then one column per
+   folder level. Each column scrolls on its own, so the page keeps its height whether a folder
+   holds four files or five thousand, and the trail that led here stays on screen. */
+.finder { display: flex; gap: 0; overflow-x: auto; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.fcol { flex: 0 0 15rem; min-width: 0; display: flex; flex-direction: column;
+  border-left: 1px solid var(--line); }
+/* One height for the whole strip, so the columns line up and the page does not jump as the
+   reader moves between a folder of four files and one of five thousand. */
+.finder { height: min(68vh, 40rem); }
+/* The generations column stays put while the folder columns scroll past it. Pinning the strip to
+   its right-hand end (see device_files.html) is what a column browser has to do - otherwise the
+   reader lands back at the left edge after every step - but it would carry the generation list off
+   the screen, and that one is not a folder level: it says which version of the backup you are
+   looking at, and switching it is a first-class move at any depth. */
+.fcol:first-child { border-left: 0; position: sticky; left: 0; z-index: 2; background: var(--surface);
+  box-shadow: 1px 0 0 var(--line); }
+.fcol-wide { flex: 1 1 24rem; }
+.fcol-head { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin: 0; padding: .6rem .75rem .4rem; position: sticky; top: 0;
+  background: var(--surface); border-bottom: 1px solid var(--line); }
+.fcol ul { list-style: none; margin: 0; padding: .25rem; overflow-y: auto; flex: 1 1 auto; }
+.fcol-body { padding: .9rem; overflow-y: auto; }
+.fcol-more { margin: 0; padding: .5rem .75rem; border-top: 1px solid var(--line); font-size: .8125rem; }
+
+/* Checkbox, name, then the one number that matters: how many files below a folder, or how big a
+   file is. The name takes whatever space is left and truncates rather than wrapping, so rows stay
+   one line and the eye can run down the column. */
+.frow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+  gap: .4rem; padding: .3rem .5rem; border-radius: var(--radius-sm); }
+.frow > a, .frow > span:not(.meta) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow > a { color: var(--ink); text-decoration: none; }
+.frow > a:hover { text-decoration: underline; }
+.frow .meta { font-size: .75rem; font-variant-numeric: tabular-nums; }
+.frow:hover { background: var(--surface-sunken); }
+/* The row that opened the column to its right. Marked by weight and a bar as well as by colour,
+   never by colour alone. */
+.frow.open { background: var(--surface-sunken); box-shadow: inset 3px 0 0 var(--accent); }
+.frow.open > a { font-weight: 600; }
+.frow form { margin: 0; display: flex; }
+.frow input[type="checkbox"]:disabled { opacity: .55; }
+
+/* The search results are the last column of the same strip, not a table under it. A hit needs its
+   path as well as its name - a list of bare file names all look alike - so this row is two lines
+   where a folder row is one, and each line truncates on its own. */
+.fcol-hits { flex: 0 0 20rem; }
+.frow.hit { align-items: start; }
+.frow.hit > a { white-space: normal; display: flex; flex-direction: column; line-height: 1.25; }
+.frow.hit .fhit, .frow.hit .fpath { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow.hit .fpath { font-size: .75rem; color: var(--muted); }
+.frow.hit > .meta { padding-top: .1rem; }
+
+.selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem;
+  padding: .7rem .9rem; margin-bottom: .75rem; background: var(--surface-sunken);
+  border-radius: var(--radius); }
+.selection-bar form { margin: 0; }
+.chips { list-style: none; display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0;
+  font-size: .8125rem; }
+.chips li { background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  padding: .1rem .6rem; max-width: 22rem; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+
+@media (max-width: 560px) {
+  /* One column at a time is unusable on a phone; two fit, and the trail is still reachable by
+     scrolling sideways. */
+  .fcol { flex-basis: 12rem; }
+  .finder { height: min(60vh, 26rem); }
+  /* And the generations column stops sticking. On a desk it costs a sixth of the strip and keeps
+     a useful thing in reach; measured on a 375px screen it took 192 of 343 pixels and left 149 for
+     the column the reader is actually in, which is the wrong trade. It scrolls away like any other
+     column here and is one swipe back. */
+  .fcol:first-child { position: static; box-shadow: none; }
+}

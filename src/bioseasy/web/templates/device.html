@@ -1,0 +1,86 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import strip, device_meta, run_result, TRIGGER_LABELS %}
+{% block title %}{{ s.device.name or s.device.udid }} · bioseasy{% endblock %}
+{% block content %}
+<h1>{{ s.device.name or s.device.udid }}</h1>
+<p class="meta">{{ device_meta(s.device.product_type, s.device.os_version) }} · <code>{{ s.device.udid }}</code></p>
+<p class="actions">
+  <a class="button secondary" href="/devices/{{ s.device.udid }}/settings">Settings</a>
+  <a class="button secondary" href="/devices/{{ s.device.udid }}/files">Browse files</a>
+  <a class="button secondary" href="/devices/{{ s.device.udid }}/restore">Restore guide</a>
+</p>
+
+{% if s.setup_state == "open" %}
+<p class="flash">Setup incomplete. <a href="/devices/{{ s.device.udid }}/setup">Continue the setup checklist</a>.</p>
+{% elif s.setup_state == "unconfirmed" %}
+<p class="flash">This device is backing up and encrypted, but Wi-Fi backups and encryption were
+  never confirmed here. <a href="/devices/{{ s.device.udid }}/setup">Check the setup</a>.</p>
+{% endif %}
+
+{% for w in pair_warnings or [] %}<p class="flash">{{ w }}</p>{% endfor %}
+{% if s.pair_warning %}
+<p class="flash {{ 'bad' if s.pair_expired else 'warn' }}">{{ s.pair_warning }}
+  {% if user.is_admin %}<a href="/add#code-hand-off">Pair again</a>.{% endif %}</p>
+{% endif %}
+
+{% if s.device.last_alert_ok == 0 %}
+<p class="flash bad">The last alert for this device could not be delivered{{ ": " ~ s.device.last_alert_error if s.device.last_alert_error else "" }}.
+  {% if user.is_admin %}Check the notification connectors in <a href="/devices/{{ s.device.udid }}/settings">Settings</a>.{% endif %}</p>
+{% endif %}
+
+{% include "_ios_home_hint.html" %}
+
+{% include "_status.html" %}
+<p id="status-announce" class="visually-hidden" aria-live="polite"></p>
+<script>
+  // The status section is replaced on every poll, so it cannot be the live region itself, and
+  // announcing each poll would repeat the same sentence every two seconds. Only changes are read.
+  document.body.addEventListener("htmx:afterSwap", () => {
+    const text = document.getElementById("status")?.dataset.announce;
+    const out = document.getElementById("status-announce");
+    if (out && text && text !== out.textContent) out.textContent = text;
+  });
+</script>
+
+{# Each h2 and its content is one chapter in a .panel, so the boundaries are visible instead of
+   being inferred from spacing. #}
+{% include "_runs.html" %}
+
+{% include "_backup_on_disk.html" %}
+
+{# Only where there is a password to know. On an unencrypted backup this section asked the owner
+   to confirm a password that does not exist, under the sentence "without this password the backup
+   cannot be restored" - which is the opposite of true for that backup. Found on a demo device
+   whose backups are deliberately unencrypted. #}
+{% if (s.backup and s.backup.encrypted) or pwcheck_message or pwcheck_error %}
+{% include "_password_check.html" %}
+{% endif %}
+
+<section class="panel">
+<h2>Reachability</h2>
+<p class="meta">Last seen {{ reachability.last_seen_at | ago }}{% if reachability.last_transport %} over
+  {{ reachability.last_transport | upper }}{% endif %}.</p>
+<table class="runs">
+  <caption class="visually-hidden">Share of scheduled checks the device was seen in, last 7 days</caption>
+  <thead><tr><th scope="col">Day</th><th scope="col">Seen</th><th scope="col"></th></tr></thead>
+  <tbody>
+  {% for d in reachability.daily %}
+    <tr>
+      <td>{{ d.day.isoformat() }}</td>
+      <td>{{ d.share_text }}</td>
+      <td><progress max="{{ d.checks or 1 }}" value="{{ d.seen }}">{{ d.share_text }}</progress></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="meta">A phone in Low Power Mode or away from this network is not seen; that alone does not mean a
+  backup was missed.</p>
+
+</section>
+
+<section class="panel">
+<h2>Generations</h2>
+{% include "_generations.html" %}
+</section>
+{% endblock %}

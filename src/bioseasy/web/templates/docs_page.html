@@ -1,0 +1,9 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}{{ page.title }} · Docs · bioseasy{% endblock %}
+{% block content %}
+<p class="meta"><a href="/guide">&larr; Docs</a></p>
+<div class="docs-page">
+{{ page.html }}{# already Markup from docs.render: allowlisted, pre-escaped docs only #}
+</div>
+{% endblock %}

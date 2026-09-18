@@ -1,0 +1,98 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}Restore guide · {{ device.name or device.udid }} · bioseasy{% endblock %}
+{% block content %}
+<h1>Restore guide</h1>
+<p class="meta"><a href="/devices/{{ device.udid }}">&larr; Back to {{ device.name or device.udid }}</a></p>
+
+<p class="flash bad"><strong>Restoring overwrites the device.</strong> Everything currently on the iPhone or iPad is
+replaced by the backup you choose. There is no undo.</p>
+
+{% if selected %}
+<p class="flash">Showing the restore guide for the generation taken {{ selected.taken_at | ago }}
+({{ "pinned" if selected.pinned else "not pinned" }}). <a href="/devices/{{ device.udid }}/restore">Show every
+generation instead</a>.</p>
+{% endif %}
+
+<h2>Where the backups are</h2>
+<p>Every path below is inside the bioseasy container. On the host it sits under the directory mounted as
+<code>BACKUP_ROOT</code>. A snapshot is hard-linked against the previous generation: copy it, never move it, or the
+generations still sharing its files lose them.</p>
+<table class="runs">
+  <thead><tr><th>Generation</th><th>Path in the container</th></tr></thead>
+  <tbody>
+  {% if live_exists and not selected %}
+  <tr><td>Live backup</td><td><code>{{ live_path }}</code></td></tr>
+  {% endif %}
+  {% for s in ([selected] if selected else snaps) %}
+  <tr id="snapshot-{{ s.path.name }}">
+    <td>{{ s.taken_at | ago }} ({{ "pinned" if s.pinned else "not pinned" }})</td>
+    <td><code>{{ s.path }}</code></td>
+  </tr>
+  {% endfor %}
+  {% if not live_exists and not snaps %}
+  <tr><td colspan="2">No backup of this device on disk yet.</td></tr>
+  {% endif %}
+  </tbody>
+</table>
+
+{% set restore_path = selected.path if selected else live_path %}
+<p class="meta">The three ways below all restore from <code>{{ restore_path }}</code>{% if not selected and live_exists %} (the live backup; pick a generation from the table above for a fixed point in time){% endif %}.
+A backup password is required for an encrypted backup; a backup made without encryption restores without one.</p>
+
+<h2>Restore with Finder, on a Mac</h2>
+<ol>
+  <li>Copy (not move) <code>{{ restore_path }}</code> into <code>~/Library/Application Support/MobileSync/Backup/</code>
+    (Finder: Go &rarr; Go to Folder), so it becomes a new subfolder there named exactly after the device UDID,
+    <code>{{ device.udid }}</code>.</li>
+  <li>Connect the device, open it in Finder, and under the General tab choose "Restore Backup", then pick the backup
+    you just copied in. Enter the backup password when Finder asks for it if the backup is encrypted.</li>
+</ol>
+
+<h2>Restore with Apple Devices or iTunes, on Windows</h2>
+<!-- Apple's own support page (support.apple.com/en-us/108809, checked 2026-09-15) names only the root folder to
+     open from the Run dialog for Windows, not the exact backup subfolder beneath it. Path not verified beyond that
+     root: do not add a guessed "\Apple\MobileSync\Backup\" suffix without checking it against Apple's docs again. -->
+<ol>
+  <li>Press Windows key + R and open <code>%USERPROFILE%</code> if you use the Apple Devices app or iTunes from the
+    Microsoft Store, or <code>%AppData%</code> if you use the traditional iTunes install (its Help menu shows "Check
+    for Updates"). Apple's documentation does not name the exact backup subfolder under that root
+    (<strong>path not verified</strong>); look for a <code>MobileSync\Backup</code> folder from there.</li>
+  <li>Copy (not move) <code>{{ restore_path }}</code> into that backup folder, so it becomes a new subfolder named
+    exactly after the device UDID, <code>{{ device.udid }}</code>.</li>
+  <li>Connect the device, open it in the Apple Devices app or iTunes, and under the General tab choose "Restore
+    Backup", then pick the backup you just copied in. Enter the backup password when it asks for it if the backup is
+    encrypted.</li>
+</ol>
+<p class="meta">On Windows the exact subfolder below the root varies - check both paths above.</p>
+
+<h2>Restore with iMazing (third party, commercial)</h2>
+<ol>
+  <li>Copy (not move) <code>{{ restore_path }}</code> to a folder on the computer running iMazing; it does not need
+    to sit inside iMazing's own backup folder.</li>
+  <li>In iMazing, open the device, go to its Backups view, choose "Add existing backup" (or the equivalent import
+    action in the installed version) and point it at the folder you copied in.</li>
+  <li>Select the imported backup and choose "Restore", entering the backup password when asked if the backup is
+    encrypted.</li>
+</ol>
+<p class="meta">bioseasy does not bundle, install or configure iMazing (Digidna, not affiliated with this project);
+its exact menu wording can change between versions, so check the "Restore a Device" section of iMazing's own guide
+at <a href="https://imazing.com/guides">imazing.com/guides</a> before relying on the steps above.</p>
+
+<h2>Restore with pymobiledevice3, from any computer</h2>
+<ol>
+  <li>Copy (not move) the chosen directory from the table above into an empty folder on the computer doing the
+    restore, so the new folder contains one subfolder named exactly after the device UDID:
+    <code>&lt;folder&gt;/{{ device.udid }}</code>.</li>
+  <li>With pymobiledevice3 installed and the device connected and unlocked, run:
+    <code>pymobiledevice3 backup2 restore --password &lt;backup password&gt; &lt;folder&gt;</code> (omit
+    <code>--password</code> for a backup made without encryption).</li>
+  <li>Confirm the restore on the device when it asks.</li>
+</ol>
+{# Was a verification note ("verified against the installed CLI ..."), which is an evidence trail
+   for contributors. The one fact in it that a reader acts on - the folder you point at is the
+   parent, not the backup itself - is now an instruction. #}
+<p class="meta">The folder you pass is the <em>parent</em>: it has to contain a directory named
+after the device id, not be that directory. Omit <code>--password</code> for a backup made without
+encryption.</p>
+{% endblock %}

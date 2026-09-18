@@ -1,0 +1,50 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import section_nav %}
+{% block title %}Admin · bioseasy{% endblock %}
+{% block content %}
+<h1>Admin</h1>
+{{ section_nav(admin_nav, request.url.path, "Admin") }}
+<p class="meta">Everything that applies to this whole installation rather than to one account.
+  Your own password, API tokens and browser notifications live under
+  <a href="/settings">Settings</a>.</p>
+
+{# A plain list, not a two-column definition list: at a wide window that put the link on the far
+   left and its sentence far to the right, with the eye travelling across empty space for every
+   row. Each entry now reads as one block. #}
+<ul class="section-index rows">
+  <li>
+    <a href="/admin/notifications">Notifications</a>
+    <p class="meta">Email and Telegram connectors, Home Assistant over MQTT, and a test message to
+      all of them.</p>
+  </li>
+  <li>
+    <a href="/admin/storage">Storage</a>
+    <p class="meta">The backup volume: mount, free space, hard-link support, and a read-only
+      browse view.</p>
+  </li>
+  <li>
+    <a href="/admin/users">Users</a>
+    <p class="meta">Local accounts, their roles, and which of them sign in through single
+      sign-on.</p>
+  </li>
+  <li>
+    <a href="/admin/defaults">Defaults</a>
+    <p class="meta">Scheduled window, backup interval, overdue threshold, free-space threshold and
+      how many generations to keep. Every device can override any of them on its own settings
+      page.</p>
+  </li>
+  <li>
+    <a href="/admin/update">Update check</a>
+    <p class="meta">Find out when a newer bioseasy is available. Off unless you turn it on.</p>
+  </li>
+  <li>
+    <a href="/admin/logs">Logs</a>
+    <p class="meta">What went wrong, and what happened on every device - across all owners.</p>
+  </li>
+  <li>
+    <a href="/admin/about">About</a>
+    <p class="meta">Versions and what bioseasy was tested with, safe to paste into a bug report.</p>
+  </li>
+</ul>
+{% endblock %}

@@ -1,0 +1,86 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{# Notification connectors list and add-forms, shared by device_settings.html (scope="device",
+   base_url="/devices/<udid>") and admin_notifications.html (scope="admin", base_url="/admin/notifications").
+   Included rather than a macro because it needs csrf, connectors, create_errors, create_values,
+   edit_error_id, edit_errors and edit_values from the surrounding page context, and passing all
+   of those through a macro call would be longer than the section itself. #}
+{% from "_macros.html" import email_fields, telegram_fields, apprise_fields, error_list %}
+
+<h2>Notification connectors</h2>
+<p class="meta">
+  {% if scope == "device" %}
+  Alerts for this device go to every connector below, plus the admin alert connectors.
+  {% else %}
+  These alerts go out for every device's alerts, in addition to that device's own connectors.
+  {% endif %}
+</p>
+
+{% for c in connectors %}
+<details class="connector" {% if edit_error_id == c.id %}open{% endif %}>
+  <summary>{{ c.label }} <small>({{ c.kind }}{% if not c.enabled %}, disabled{% endif %})</small></summary>
+  {% set v = edit_values if edit_error_id == c.id else c.form %}
+  {% set has_edit_errors = edit_error_id == c.id and edit_errors %}
+  {{ error_list(edit_errors if has_edit_errors else None, "connector-edit-errors-" ~ c.id) }}
+  <form method="post" action="{{ base_url }}/connectors/{{ c.id }}/edit" class="stack" {% if has_edit_errors %}aria-describedby="connector-edit-errors-{{ c.id }}"{% endif %}>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if c.kind == "email" %}
+    {{ email_fields(v, c.secret_set) }}
+    {% elif c.kind == "telegram" %}
+    {{ telegram_fields(v, c.secret_set) }}
+    {% else %}
+    {{ apprise_fields(v, c.secret_set) }}
+    {% endif %}
+    <label class="checkbox-row">
+      <input name="enabled" type="checkbox" value="1" {% if c.enabled %}checked{% endif %}>
+      Enabled
+    </label>
+    <button class="button">Save</button>
+  </form>
+  <form method="post" action="{{ base_url }}/connectors/{{ c.id }}/delete">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="link" type="submit">Delete connector</button>
+  </form>
+  <div id="notify-test-{{ c.id }}">
+    <form hx-post="{{ base_url }}/connectors/{{ c.id }}/test" hx-target="#notify-test-{{ c.id }}" hx-swap="outerHTML">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="button">Send test message</button>
+    </form>
+  </div>
+</details>
+{% else %}
+<p class="meta">No connectors yet.</p>
+{% endfor %}
+
+<h3>Add a connector</h3>
+
+<details {% if create_errors.email %}open{% endif %}>
+  <summary>Email</summary>
+  {{ error_list(create_errors.email, "connector-add-errors-email") }}
+  <form method="post" action="{{ base_url }}/connectors/email" class="stack" {% if create_errors.email %}aria-describedby="connector-add-errors-email"{% endif %}>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {{ email_fields(create_values.email or {}, False) }}
+    <button class="button">Add connector</button>
+  </form>
+</details>
+
+<details {% if create_errors.telegram %}open{% endif %}>
+  <summary>Telegram</summary>
+  {{ error_list(create_errors.telegram, "connector-add-errors-telegram") }}
+  <form method="post" action="{{ base_url }}/connectors/telegram" class="stack" {% if create_errors.telegram %}aria-describedby="connector-add-errors-telegram"{% endif %}>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {{ telegram_fields(create_values.telegram or {}, False) }}
+    <button class="button">Add connector</button>
+  </form>
+</details>
+
+<details {% if create_errors.apprise %}open{% endif %}>
+  <summary>Advanced: raw Apprise URL</summary>
+  <p class="meta">For a notification service that has no form of its own here. See the
+    <a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noopener">Apprise wiki</a> for the syntax.</p>
+  {{ error_list(create_errors.apprise, "connector-add-errors-apprise") }}
+  <form method="post" action="{{ base_url }}/connectors/apprise" class="stack" {% if create_errors.apprise %}aria-describedby="connector-add-errors-apprise"{% endif %}>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {{ apprise_fields(create_values.apprise or {}, False) }}
+    <button class="button">Add connector</button>
+  </form>
+</details>

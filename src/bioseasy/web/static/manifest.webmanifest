@@ -1,0 +1,14 @@
+{
+  "name": "bioseasy",
+  "short_name": "bioseasy",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2f5f4",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/static/icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

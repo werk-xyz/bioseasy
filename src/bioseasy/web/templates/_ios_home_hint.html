@@ -1,0 +1,27 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{# Home screen hint: the iPhone cannot create trust from a website, but the
+   server can never tell from a request alone whether the visitor is on an iPhone/iPad and
+   already running standalone - navigator.userAgent and navigator.standalone /
+   `display-mode: standalone` only exist in the browser - so this always renders hidden and a
+   tiny script decides whether to show it. #}
+<p id="ios-home-hint" class="flash" hidden>
+  Add bioseasy to your Home Screen: tap Share, then Add to Home Screen. Start backups from there.
+  <button type="button" id="ios-home-hint-dismiss" class="link">Dismiss</button>
+</p>
+<script>
+  (function () {
+    var STORAGE_KEY = "ios-home-hint-dismissed";
+    var hint = document.getElementById("ios-home-hint");
+    if (!hint) return;
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    var standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+    var dismissed = false;
+    try { dismissed = localStorage.getItem(STORAGE_KEY) === "1"; } catch (e) {}
+    if (isIOS && !standalone && !dismissed) hint.hidden = false;
+    var dismiss = document.getElementById("ios-home-hint-dismiss");
+    if (dismiss) dismiss.addEventListener("click", function () {
+      hint.hidden = true;
+      try { localStorage.setItem(STORAGE_KEY, "1"); } catch (e) {}
+    });
+  })();
+</script>

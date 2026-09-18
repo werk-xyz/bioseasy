@@ -1,0 +1,12 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+<section id="pair-code-status" class="status"
+  {% if not done and not expired %}hx-get="/add/pair-code/{{ code }}/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% if done %}
+  <p class="flash">Paired. Opening the setup checklist…</p>
+  {% elif expired %}
+  <p class="flash bad">This code expired before it was used.</p>
+  <p><a href="/add">Generate a new one</a></p>
+  {% else %}
+  <p><strong>Waiting…</strong> Run the command above on the computer the device is plugged into.</p>
+  {% endif %}
+</section>

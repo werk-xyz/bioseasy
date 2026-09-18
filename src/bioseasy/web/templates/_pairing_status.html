@@ -1,0 +1,12 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+<section id="pairing-status" class="status"
+  {% if pairing.state in ("pending", "running") %}hx-get="/add/pairing/{{ pairing.udid }}/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% if pairing.state in ("pending", "running") %}
+  <p><strong>Pairing…</strong> Confirm "Trust" and enter the passcode on the device if asked.</p>
+  {% elif pairing.state == "done" %}
+  <p class="flash">Paired. Opening the setup checklist…</p>
+  {% elif pairing.state == "failed" %}
+  <p class="flash bad"><strong>Pairing failed:</strong> {{ pairing.message }}</p>
+  <p><a href="/add">Back to Add a device</a></p>
+  {% endif %}
+</section>

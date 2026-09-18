@@ -1,0 +1,61 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% from "_macros.html" import status_pill %}
+<section id="generations" class="status">
+  <p class="meta">Total space used by the live backup and every generation, counted once per file shared between them:
+    <strong>{{ generations.total_bytes | filesizeformat }}</strong></p>
+  {% if generations.rows %}
+  <table class="runs">
+    <caption class="visually-hidden">Backup generations, newest first</caption>
+    <thead><tr><th scope="col">Taken</th><th scope="col">State</th><th scope="col">Kept by</th><th scope="col">Size</th><th scope="col">Deep verification</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+    <tbody>
+    {% for row in generations.rows %}
+    {% set snap = row.snapshot %}
+    {% set v = row.verify %}
+    <tr>
+      <td>{{ snap.taken_at | ago }} ·
+        <time datetime="{{ snap.taken_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}">{{ snap.taken_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</time>
+      </td>
+      <td class="nowrap">{{ "Pinned" if snap.pinned else "Not pinned" }}</td>
+      <td>{{ row.kept_by | join(", ") if row.kept_by else "would be removed" }}</td>
+      <td class="nowrap">{{ row.size_bytes | filesizeformat }}</td>
+      <td>
+        {% if row.verifying %}
+          {{ status_pill('accent', 'Verifying…') }}
+        {% elif v is none %}
+          Never checked
+        {% elif v.outcome == "verified" %}
+          Verified ({{ v.present }} of {{ v.listed }} files) · {{ v.checked_at | ago }}
+        {% elif v.outcome == "missing" %}
+          <span class="bad">Missing {{ v.missing }} of {{ v.listed }} files</span>{% if v.detail %} ({{ v.detail }}){% endif %} · {{ v.checked_at | ago }}
+        {% else %}
+          Not checked: {{ v.detail }} · {{ v.checked_at | ago }}
+        {% endif %}
+      </td>
+      <td>
+        <a href="/devices/{{ generations.udid }}/files?snapshot={{ snap.path.name }}">Files</a>
+        <a href="/devices/{{ generations.udid }}/snapshots/{{ snap.path.name }}/download">Download</a>
+        <a href="/devices/{{ generations.udid }}/restore?snapshot={{ snap.path.name }}">Restore guide</a>
+        <form method="post" action="/devices/{{ generations.udid }}/snapshots/{{ snap.path.name }}/pin"
+          hx-post="/devices/{{ generations.udid }}/snapshots/{{ snap.path.name }}/pin"
+          hx-target="#generations" hx-swap="outerHTML">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="pinned" value="{{ 0 if snap.pinned else 1 }}">
+          <button class="link" type="submit"
+            aria-label="{{ 'Unpin' if snap.pinned else 'Pin' }} generation from {{ snap.taken_at.strftime('%Y-%m-%d %H:%M UTC') }}">{{ "Unpin" if snap.pinned else "Pin" }}</button>
+        </form>
+        <form method="post" action="/devices/{{ generations.udid }}/snapshots/{{ snap.path.name }}/verify"
+          hx-post="/devices/{{ generations.udid }}/snapshots/{{ snap.path.name }}/verify"
+          hx-target="#generations" hx-swap="outerHTML">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="link" type="submit"
+            aria-label="Verify generation from {{ snap.taken_at.strftime('%Y-%m-%d %H:%M UTC') }}">Verify</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No generations yet.</p>
+  {% endif %}
+</section>

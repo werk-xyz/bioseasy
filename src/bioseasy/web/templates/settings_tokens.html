@@ -1,0 +1,64 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import section_nav %}
+{% block title %}API tokens · bioseasy{% endblock %}
+{% block content %}
+<h1>API tokens</h1>
+{% if settings_nav %}{{ section_nav(settings_nav, request.url.path, "Settings") }}{% endif %}
+{% include "_scope_note.html" %}
+{# Pointed at "docs/api.md ... in the repository" - files a signed-in user does not have. The same
+   pages ship with the app at /guide. #}
+<p class="lede">Read the status of your own devices from a script, and - with a token scoped for
+  it - start a backup too, for example from an iOS Shortcut. See
+  <a href="/guide/api">Status API</a>. Each token is shown once, here, when you create it.</p>
+
+{% if new_token %}
+<p class="flash">Token "{{ new_token.name }}" created. Copy it now, it will not be shown again:
+  <br><code>{{ new_token.token }}</code></p>
+{% endif %}
+{% if token_error %}
+<p class="flash bad">{{ token_error }}</p>
+{% endif %}
+
+<table class="runs">
+  <thead><tr><th>Name</th><th>Prefix</th><th>Scope</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for t in api_tokens %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td><code>{{ t.prefix }}</code></td>
+      <td>{% if t.scope == "backup" %}Read and start backups{% else %}Read-only{% endif %}</td>
+      <td><time datetime="{{ t.created_at }}">{{ t.created_at | ago }}</time></td>
+      <td>{% if t.last_used_at %}<time datetime="{{ t.last_used_at }}">{{ t.last_used_at | ago }}</time>{% else %}never{% endif %}</td>
+      <td>{% if t.revoked_at %}revoked{% else %}active{% endif %}</td>
+      <td>
+        {% if not t.revoked_at %}
+        <form method="post" action="/settings/tokens/{{ t.id }}/revoke">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="link">Revoke</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7">No API tokens yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Create a token</h2>
+<form method="post" action="/settings/tokens" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Name <small>(what this token is for, e.g. "Home Assistant" or "Shortcuts")</small>
+    <input name="name" maxlength="64" required>
+  </label>
+  <fieldset>
+    <legend>Scope</legend>
+    {# checkbox-row, or `.stack label { display: grid }` stretches each radio across the whole
+       form - the same defect the Users page's role picker had (measured at 937px wide). #}
+    <label class="checkbox-row"><input type="radio" name="scope" value="read" checked> Read-only: status of your own devices</label>
+    <label class="checkbox-row"><input type="radio" name="scope" value="backup"> Read and start backups: also start a backup of one of your own devices</label>
+  </fieldset>
+  <button class="button">Create token</button>
+</form>
+{% endblock %}

@@ -1,0 +1,60 @@
+[project]
+name = "bioseasy"
+version = "1.0.0"
+description = "Self-hosted Wi-Fi backups for iPhone and iPad: encrypted, Finder-compatible, with a small web UI."
+authors = [
+    { name = "The bioseasy authors" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "apprise>=1.13.1",
+    "argon2-cffi>=25.1.0",
+    "authlib>=1.8.0",
+    "cryptography>=50.0.1",
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "huey>=3.4,<4",
+    "itsdangerous>=2.2.0",
+    "jinja2>=3.1.6",
+    # Authlib's JWT layer. Declared rather than leaned on as a transitive dependency,
+    # because app.py catches its JoseError directly when an id_token fails verification.
+    "joserfc>=1.7.5",
+    "markdown>=3.7",
+    "paho-mqtt>=2.1.0",
+    "pyiosbackup>=0.2.4",
+    "pymobiledevice3==11.12.5",
+    "python-multipart>=0.0.32",
+    "pywebpush>=2.5.0",
+    "uvicorn[standard]>=0.53.0",
+]
+
+[project.scripts]
+bioseasy = "bioseasy:main"
+
+[build-system]
+requires = ["uv_build>=0.11.26,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.7",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]  # assert is how pytest tests are written
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]  # test passwords are fixtures, not secrets
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency injection is declared through call defaults by design.
+extend-immutable-calls = ["fastapi.Depends"]

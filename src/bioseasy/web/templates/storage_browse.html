@@ -1,0 +1,59 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}Backup volume · bioseasy{% endblock %}
+{% block content %}
+<h1>Backup volume</h1>
+<nav aria-label="Breadcrumb">
+  <ol class="breadcrumbs">
+    {% for label, crumb_path in breadcrumbs %}
+    {% if loop.last %}
+    <li aria-current="page">{{ label }}</li>
+    {% else %}
+    <li><a href="/admin/storage/browse{% if crumb_path %}?path={{ crumb_path | urlencode }}{% endif %}">{{ label }}</a></li>
+    {% endif %}
+    {% endfor %}
+  </ol>
+</nav>
+<p class="lede">What lies on the backup volume, and how much room it takes. Read-only; a file
+  shared between generations counts once.</p>
+<p class="meta">To look inside a backup - the photos, databases and app data a device stored -
+  open a device and choose Browse files. The directories here are the backup format's own, not
+  the device's files.</p>
+{% if entries %}
+<table class="runs">
+  <caption class="visually-hidden">Contents of {{ breadcrumbs[-1][0] }}</caption>
+  <thead>
+    <tr><th scope="col">Name</th><th scope="col">Size</th><th scope="col">Modified</th><th scope="col">Items</th></tr>
+  </thead>
+  <tbody>
+    {% for entry in entries %}
+    <tr>
+      <td>
+        {% if entry.is_dir %}
+        <a href="/admin/storage/browse?path={{ entry.rel_path | urlencode }}">{{ entry.name }}/</a>
+        {% else %}
+        {{ entry.name }}
+        {% endif %}
+        {% if not root_rel and device_names.get(entry.name) %}
+        <span class="meta">({{ device_names[entry.name] }})</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if entry.is_dir %}
+        {% set rel_path = entry.rel_path %}
+        {% set row = dir_sizes.get(entry.rel_path) %}
+        {% include "_dir_size.html" with context %}
+        {% else %}
+        {{ entry.size_bytes | filesizeformat }}
+        {% endif %}
+      </td>
+      <td><time datetime="{{ entry.mtime.strftime('%Y-%m-%dT%H:%M:%SZ') }}">{{ entry.mtime.strftime('%Y-%m-%d %H:%M UTC') }}</time></td>
+      <td>{{ entry.item_count if entry.item_count is not none else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>This directory is empty.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,150 @@
+# Builds the pairing helper app for macOS, Windows and Linux, and publishes it on its own tag.
+#
+# The helper is released separately from the server, on tags shaped `helper-v1.2.3`, because the
+# two have separate lives: the server ships as a container and changes often, the helper is a
+# small desktop app most people download once. A shared version number would force a helper
+# release for every server fix and tell a user nothing.
+#
+# PyInstaller cannot cross-build, so each platform is built on its own runner.
+name: Helper app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "helper/**"
+      - ".github/workflows/helper.yml"
+    tags: ["helper-v*"]
+  pull_request:
+    paths:
+      - "helper/**"
+      - ".github/workflows/helper.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: helper-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macos-arm64
+          - os: windows-latest
+            name: windows-x64
+          - os: ubuntu-latest
+            name: linux-x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: helper
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.26"
+
+      # The helper's window is tkinter. uv's managed Python ships it on macOS and Windows; on
+      # Linux the interpreter reaches into the system Tcl/Tk, so those two packages are installed.
+      - name: Install Tcl/Tk (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: .
+        run: |
+          set -euo pipefail
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y --no-install-recommends python3-tk tk-dev
+
+      - name: Sync dependencies
+        run: uv sync --frozen --python 3.12 --group build
+
+      # macOS gets an .app bundle, the other two a single executable: that is the convention each
+      # platform's users expect, not a difference in what the program does.
+      - name: Build (macOS)
+        if: matrix.os == 'macos-14'
+        run: |
+          uv run --python 3.12 pyinstaller \
+            --name bioseasy-pair --windowed --clean --noconfirm \
+            --collect-all pymobiledevice3 --collect-data certifi \
+            --osx-bundle-identifier org.bioseasy.pairhelper \
+            --target-architecture arm64 \
+            bioseasy_pair_helper.py
+          cd dist && ditto -c -k --sequesterRsrc --keepParent bioseasy-pair.app bioseasy-pair-macos-arm64.zip
+
+      - name: Build (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          uv run --python 3.12 pyinstaller \
+            --name bioseasy-pair --onefile --clean --noconfirm \
+            --collect-all pymobiledevice3 --collect-data certifi \
+            bioseasy_pair_helper.py
+          mv dist/bioseasy-pair dist/bioseasy-pair-linux-x64
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        # PowerShell: the backticks below are its line continuation, not a shell substitution.
+        shell: pwsh
+        run: |
+          uv run --python 3.12 pyinstaller `
+            --name bioseasy-pair --onefile --windowed --clean --noconfirm `
+            --collect-all pymobiledevice3 --collect-data certifi `
+            bioseasy_pair_helper.py
+          Move-Item dist/bioseasy-pair.exe dist/bioseasy-pair-windows-x64.exe
+
+      # Runs on every build, tag or not: a binary a maintainer can download and try is the point
+      # of building it on every change to helper/.
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bioseasy-pair-${{ matrix.name }}
+          path: |
+            helper/dist/bioseasy-pair-macos-arm64.zip
+            helper/dist/bioseasy-pair-linux-x64
+            helper/dist/bioseasy-pair-windows-x64.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    # Only a helper-v* tag publishes. A push to main builds and stops there.
+    if: startsWith(github.ref, 'refs/tags/helper-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # The binaries bundle pymobiledevice3 and other GPL code, so the license text and the notices
+      # travel with them on the release page - GPL-3.0 section 4 asks for the license to accompany
+      # a copy, and the corresponding source is this repository at the same tag.
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - run: cp LICENSE NOTICE artifacts/
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          # None of these binaries is signed. Saying so on the release page is cheaper than the
+          # support thread that follows a Gatekeeper or SmartScreen warning nobody expected.
+          body: |
+            Pairing helper app for bioseasy. Download the build for your platform.
+
+            These builds are **not code-signed**. macOS blocks the app on first launch:
+            right-click it and choose Open, or allow it under System Settings, Privacy &
+            Security. Windows SmartScreen warns for the same reason: More info, then Run anyway.
+            Linux needs `chmod +x` and a running `usbmuxd`.
+
+            What the app does, what it stores and how to remove it again: `helper/README.md`.
+
+            GPL-3.0-or-later. The source for these builds is this repository at this tag; the
+            licenses of everything bundled are in NOTICE, attached here.
+          generate_release_notes: true

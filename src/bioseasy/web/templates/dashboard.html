@@ -1,0 +1,51 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import health, strip, device_meta %}
+{% block content %}
+{% if storage and not storage.ok %}
+<p class="flash bad"><strong>Storage:</strong> {{ storage.problems | join("; ") }}. <a href="/admin/storage">Check storage</a></p>
+{% endif %}
+
+<h1>Devices</h1>
+{# Grouped by owner: your own first, then everyone else's by name. Every view
+   carries a group heading, including a member's single group, so device headings stay at one
+   level (h3) instead of skipping from h1 to h3 in one view and not the other. #}
+{% for group in groups %}
+<h2 class="owner-group">{{ group.label }}
+  <small class="meta">{{ group.summaries | length }} device{{ "" if group.summaries | length == 1 else "s" }}</small>
+</h2>
+<div class="rows">
+{% for s in group.summaries %}
+<section class="device-row">
+  <div class="who">
+    <h3><a href="/devices/{{ s.device.udid }}">{{ s.device.name or s.device.udid }}</a></h3>
+    <p class="meta">{{ device_meta(s.device.product_type, s.device.os_version) }}</p>
+  </div>
+  <div class="state">
+    {{ health(s) }}
+    <p class="meta">Last good backup: {{ (s.backup.last_backup if s.backup and s.backup.complete else None) | ago }}</p>
+    {% if s.setup_state == "open" %}
+    {# "Setup incomplete" states a condition; "Finish setup" offers the way out of it, which is
+       what somebody standing in front of an unfinished device wants to read. #}
+    <p class="meta"><a href="/devices/{{ s.device.udid }}/setup">Finish setup</a></p>
+    {% elif s.setup_state == "unconfirmed" %}
+    {# Backing up and encrypted, but nobody has confirmed the two switches on the device - saying
+       "finish setup" here would contradict the backup right next to it. #}
+    <p class="meta"><a href="/devices/{{ s.device.udid }}/setup">Check setup</a></p>
+    {% endif %}
+    {% if s.pair_warning %}
+    <p class="flash {{ 'bad' if s.pair_expired else 'warn' }}">{{ s.pair_warning }}
+      {% if user.is_admin %}<a href="/add#code-hand-off">Pair again</a>.{% endif %}</p>
+    {% endif %}
+  </div>
+  {{ strip(s.runs) }}
+</section>
+{% endfor %}
+</div>
+{% else %}
+<section class="empty-state">
+  <p>No devices yet.</p>
+  {% if user.is_admin %}<p><a class="button" href="/add">Add a device</a></p>{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,300 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}bioseasy{% endblock %}</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  {# The revision in the address, so a browser that cached the old stylesheet stops using it after
+     an update: without it, a live redesign on the server left a browser showing the previous
+     look, because /static/app.css had no version to distinguish it. #}
+  <link rel="stylesheet" href="/static/app.css?v={{ app_revision or app_version }}">
+  {# Home screen web app support. Keys
+     checked against Apple's own docs, 2026-09-15:
+     - apple-touch-icon, apple-mobile-web-app-title, apple-mobile-web-app-capable: Apple
+       Developer, "Configuring Web Applications"
+       (https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html,
+       updated 2016-12-12) - Safari on iOS does not read the manifest's own name/icons for the
+       Home Screen icon and title reliably (also WebKit bug 183937, "Icon from Web App
+       Manifest not supported", filed 2018, status RESOLVED MOVED as of this check - not
+       independently reproduced on a real device), so both are set here too.
+     - theme-color (with a light/dark media query) is read by Safari since Safari 15: WebKit
+       Blog, "New WebKit Features in Safari 15" (https://webkit.org/blog/11989/new-webkit-features-in-safari-15/),
+       "changes the color of the status bar and overscroll area in Safari on iOS 15".
+     - <link rel="manifest"> is read for start_url, scope and display (standalone); see the
+       same Apple doc's "Hiding Safari User Interface Components" for why
+       apple-mobile-web-app-capable is still required for standalone mode to take effect.
+     No service worker: Add to Home Screen on iOS needs only these tags and the manifest, not
+     an installability check the way Android Chrome does (same Apple doc; it never mentions a
+     service worker). #}
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
+  <meta name="apple-mobile-web-app-title" content="bioseasy">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a2327">
+  <script>
+    // Apply a stored theme before first paint; without a stored choice the OS setting applies.
+    try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+{# Three facts, in the order a visitor needs them: which account, what is fake, how long it lasts.
+   The longer version spent a clause on "even one you paired for real", which answers a question
+   almost nobody arrives with. #}
+{% if demo_mode %}<p class="demo-banner" role="note"><strong>Demo</strong> - you are signed in automatically as <strong>demo</strong>. Backups are simulated, no device is contacted, and everything resets on the next deploy.</p>{% endif %}
+<header class="bar">
+  <a class="brand" href="/"><img src="/static/logo.svg" alt="" width="28" height="28">
+    <span class="brand-text"><span class="brand-name">bioseasy</span><span class="slogan">Backup iOS easy</span></span>
+  </a>
+  {% if user %}
+  {# Three groups in a deliberate order: who you are, where you can go,
+     what is going on. Sharing one row with no distinction made the nav
+     read as one more piece of instrumentation. #}
+  <nav>
+    <a href="/" {% if request.url.path == "/" %}aria-current="page"{% endif %}>Overview</a>
+    {% if user.is_admin %}<a href="/add">Add device</a>{% endif %}
+    {# "Settings" is this user's own account; everything system-wide moved
+       under "Admin", which only an admin sees. The sub-pages of each live in their own section
+       nav on the page itself (_macros.html's section_nav), not as a second row up here. #}
+    {# The signed-in user's own device events, not the server's log: that one is system-wide and
+       lives under Admin. Both exist on purpose - a member has no business reading service
+       warnings about devices they do not own. #}
+    <a href="/log" {% if request.url.path == "/log" %}aria-current="page"{% endif %}>Log</a>
+    <a href="/settings" {% if request.url.path.startswith("/settings") %}aria-current="page"{% endif %}>Settings</a>
+    {% if user.is_admin %}<a href="/admin" {% if request.url.path.startswith("/admin") %}aria-current="page"{% endif %}>Admin</a>{% endif %}
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Sign out</button></form>
+  </nav>
+  <div class="bar-status">
+    <div class="storage-bar" role="group" aria-label="Backup storage">
+      {% if storage_available %}
+      <span class="storage-bar-track" aria-hidden="true"><span class="storage-bar-fill{% if storage_low %} low{% endif %}" style="width: {{ storage_percent_used }}%"></span></span>
+      <span class="storage-bar-text{% if storage_low %} low{% endif %}">
+        {# Free *and* total, deliberately: the bar next to it is aria-hidden, so this line is the
+           only thing a screen reader gets. Shortening it to "84 GB free" to slim the
+           header would take the scale away from exactly the users who cannot see the bar. #}
+        {{ storage_free_bytes | filesizeformat }} free of {{ storage_total_bytes | filesizeformat }}{% if storage_low %} - Low space{% endif %}
+      </span>
+      {% else %}
+      <span class="storage-bar-text muted">Storage unavailable</span>
+      {% endif %}
+    </div>
+    {% include "_activity_indicator.html" %}
+    <details class="switcher">
+      <summary>
+        {% set cur = devices | selectattr("udid", "equalto", current_udid) | first %}
+        {{ cur.name if cur else "All devices" }}
+      </summary>
+      <ul>
+        <li><a href="/" {% if not current_udid %}aria-current="page"{% endif %}>All devices</a></li>
+        {% for d in devices %}
+        <li><a href="/devices/{{ d.udid }}" {% if d.udid == current_udid %}aria-current="page"{% endif %}>{{ d.name or d.udid }}</a></li>
+        {% endfor %}
+      </ul>
+    </details>
+  </div>
+  {% endif %}
+</header>
+{% if user %}
+{# aria-live is set by the toast script, not here: the device page already carries its own
+   persistent live region for backup phase announcements (status.py, #status-announce) and
+   test_status_announce.py asserts there is exactly one aria-live="polite" region on that page at
+   render time - this one only exists (as far as assistive tech is concerned) once the toast
+   script runs, which is every real page load but never the server-rendered HTML itself. #}
+<div class="toast-region" id="activity-toast-region"></div>
+{% endif %}
+{# A page that needs more than the reading column - the file browser's columns - sets
+   `main_class` to "wide". Everything else keeps the measure that prose wants. #}
+<main id="main" tabindex="-1"{% block main_class %}{% endblock %}>
+{% block content %}{% endblock %}
+</main>
+<footer class="site-footer">
+  <button type="button" class="icon-button" id="theme" aria-label="Switch to dark mode">
+    <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path>
+    </svg>
+    <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="4.5" fill="currentColor"></circle>
+      <g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <line x1="12" y1="2.5" x2="12" y2="5"></line>
+        <line x1="12" y1="19" x2="12" y2="21.5"></line>
+        <line x1="2.5" y1="12" x2="5" y2="12"></line>
+        <line x1="19" y1="12" x2="21.5" y2="12"></line>
+        <line x1="4.9" y1="4.9" x2="6.6" y2="6.6"></line>
+        <line x1="17.4" y1="17.4" x2="19.1" y2="19.1"></line>
+        <line x1="4.9" y1="19.1" x2="6.6" y2="17.4"></line>
+        <line x1="17.4" y1="6.6" x2="19.1" y2="4.9"></line>
+      </g>
+    </svg>
+  </button>
+  {% if user %}
+  <span class="footer-version">bioseasy {{ app_version }}{% if app_revision %} <span title="{{ app_revision }}">({{ app_revision[:7] }})</span>{% endif %}</span>
+  <nav class="footer-links">
+    <a href="/guide">Docs</a>
+    {# About lives in the Admin section: it is diagnostics -
+       versions, what it was tested with - not a footer link everyone needs. #}
+  </nav>
+  {% endif %}
+</footer>
+<script>
+  (function () {
+    const btn = document.getElementById("theme");
+    if (!btn) return;
+    const root = document.documentElement;
+    function isDark() {
+      return root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    function sync() {
+      btn.setAttribute("aria-label", isDark() ? "Switch to light mode" : "Switch to dark mode");
+    }
+    btn.addEventListener("click", () => {
+      root.dataset.theme = isDark() ? "light" : "dark";
+      try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+      sync();
+    });
+    sync();
+  })();
+</script>
+<script>
+  // Activity popover: opened by the gear icon, closed by Escape, a click outside it, or the
+  // icon itself. State lives here, not on the DOM, because htmx replaces #activity-indicator
+  // wholesale on every poll (base.html's hx-trigger="every 8s") - a DOM-held open/closed flag
+  // would be lost on the next swap.
+  (function () {
+    let open = false;
+    function apply() {
+      const btn = document.getElementById("activity-button");
+      const pop = document.getElementById("activity-popover");
+      if (!btn || !pop) return;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      pop.hidden = !open;
+    }
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest("#activity-button");
+      if (btn) {
+        open = !open;
+        apply();
+        if (open) document.getElementById("activity-popover")?.focus();
+        return;
+      }
+      if (open && !e.target.closest("#activity-indicator")) {
+        open = false;
+        apply();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && open) {
+        open = false;
+        apply();
+        document.getElementById("activity-button")?.focus();
+      }
+    });
+    document.body.addEventListener("htmx:afterSwap", (e) => {
+      if (e.target && e.target.id === "activity-indicator") apply();
+    });
+    apply();
+  })();
+</script>
+<script>
+  // Toast for background job events: a small top-right notice for
+  // "something new happened" (a job started, finished, or failed), separate from the popover
+  // above - opening the popover on its own would steal focus and space. The htmx-polled
+  // #activity-indicator fragment carries the single latest event as data-event-id/data-event-text
+  // (header_activity_context, activity.latest_event); this script only compares the id against
+  // the last one it saw, kept in sessionStorage so it survives a page navigation within the same
+  // tab (wrapped in try/catch - a private window or blocked site data degrades to "no memory of
+  // what was seen", never an error). The very first check in a session has no stored id yet: it
+  // records the current one and never toasts for it, so an event that was already old when the
+  // page opened is not re-announced as new.
+  (function () {
+    const region = document.getElementById("activity-toast-region");
+    if (!region) return;
+    region.setAttribute("aria-live", "polite");
+    const STORAGE_KEY = "bioseasy-last-activity-event";
+    const TOAST_LIFETIME_MS = 6000;
+
+    function getLastSeen() {
+      try {
+        return sessionStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function setLastSeen(id) {
+      try {
+        sessionStorage.setItem(STORAGE_KEY, id);
+      } catch (e) {
+        // No memory across checks in this case (private window, blocked storage): every event
+        // will look "new", which is the safer failure than never toasting at all.
+      }
+    }
+
+    function openPopover(toast) {
+      document.getElementById("activity-button")?.click();
+      toast.remove();
+    }
+
+    function showToast(text) {
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      toast.setAttribute("role", "status");
+      toast.tabIndex = 0;
+      const p = document.createElement("p");
+      p.textContent = text;
+      const dismiss = document.createElement("button");
+      dismiss.type = "button";
+      dismiss.className = "toast-dismiss";
+      dismiss.setAttribute("aria-label", "Dismiss notification");
+      dismiss.textContent = "×";
+      dismiss.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toast.remove();
+      });
+      toast.append(p, dismiss);
+      toast.addEventListener("click", () => openPopover(toast));
+      toast.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openPopover(toast);
+        }
+      });
+      region.appendChild(toast);
+      window.setTimeout(() => toast.remove(), TOAST_LIFETIME_MS);
+    }
+
+    function positionRegion() {
+      const header = document.querySelector("header.bar");
+      if (header) region.style.top = header.getBoundingClientRect().bottom + 8 + "px";
+    }
+
+    function check() {
+      const node = document.getElementById("activity-indicator");
+      if (!node) return;
+      const id = node.dataset.eventId || "";
+      const lastSeen = getLastSeen();
+      if (lastSeen === null) {
+        setLastSeen(id);
+        return;
+      }
+      if (id && id !== lastSeen) {
+        setLastSeen(id);
+        const text = node.dataset.eventText || "";
+        if (text) showToast(text);
+      }
+    }
+
+    window.addEventListener("resize", positionRegion);
+    document.body.addEventListener("htmx:afterSwap", (e) => {
+      if (e.target && e.target.id === "activity-indicator") check();
+    });
+    positionRegion();
+    check();
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}Pairing device · bioseasy{% endblock %}
+{% block content %}
+<h1>Pairing device</h1>
+<p class="meta">Unlock the device and confirm "Trust" if it asks. This can take up to two minutes.</p>
+{% include "_pairing_status.html" %}
+{% endblock %}

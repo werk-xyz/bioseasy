@@ -1,0 +1,11 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{# Shown on the personal Settings pages to an admin only. With a
+   single account, the admin user is also the everyday user, so it is genuinely easy to look for a
+   global default here. Says where the other kind lives instead of hiding one of them.
+
+   Deliberately short: listing all six admin areas here duplicates the Admin page's
+   own job. A note that has to be read twice to find the link in it is not doing its work. #}
+{% if user and user.is_admin %}
+<p class="scope-note">Your account only. Settings for the whole installation are under
+  <a href="/admin">Admin</a>.</p>
+{% endif %}

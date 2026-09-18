@@ -1,0 +1,170 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% set HEALTH = {
+  "ok": ("ok", "●", "Backed up"),
+  "stale": ("warn", "▲", "Overdue"),
+  "incomplete": ("bad", "■", "Incomplete"),
+  "none": ("muted", "○", "No backup yet"),
+  "running": ("accent", "◐", "Backup running"),
+} %}
+
+{% set RUN_LABELS = {
+  "succeeded": "OK",
+  "failed": "Failed",
+  "running": "Running",
+  "not_confirmed": "Not confirmed",
+  "cancelled": "Cancelled",
+} %}
+
+{% macro health(s) -%}
+  {% set cls, mark, word = HEALTH[s.health] %}
+  <span class="health {{ cls }}"><span aria-hidden="true">{{ mark }}</span> {{ word }}</span>
+{%- endmacro %}
+
+{# Shape markers for the "health" colour classes, so any ad hoc status pill (not backed by a
+   device's health dict) still reads as word + shape + colour, not colour alone (docs/design.md).
+   Kept in one place rather than typed out at each call site, which is how logs.html, storage.html,
+   _netcheck.html and _device_setup.html ended up rendering colour-only pills. #}
+{% set HEALTH_MARK = {"ok": "●", "accent": "◐", "warn": "▲", "bad": "■", "muted": "○"} %}
+
+{# How a run was started, in words. The column used to print the stored enum ("schedule", "api"),
+   which is the database's vocabulary, not the reader's. #}
+{% set TRIGGER_LABELS = {
+  "manual": "By hand",
+  "schedule": "On schedule",
+  "device": "From the device",
+  "api": "Through the API",
+} %}
+
+{# Pill class per run status, so a result reads the same in a table as it does in the strip and in
+   the activity popover, rather than printing `not_confirmed` verbatim. #}
+{% set RUN_CLASSES = {
+  "succeeded": "ok",
+  "failed": "bad",
+  "not_confirmed": "warn",
+  "cancelled": "muted",
+  "running": "accent",
+} %}
+
+{% macro run_result(status) -%}
+  {{ status_pill(RUN_CLASSES.get(status, "muted"), RUN_LABELS.get(status, status)) }}
+{%- endmacro %}
+
+{% macro status_pill(cls, word) -%}
+  <span class="health {{ cls }}"><span aria-hidden="true">{{ HEALTH_MARK.get(cls, "") }}</span> {{ word }}</span>
+{%- endmacro %}
+
+{# Model and system version. A device added through the code hand-off has neither until the
+   first scan or backup, so that case says when they appear instead of "Unknown model". #}
+{% macro device_meta(product_type, os_version) -%}
+  {%- set system = "iPadOS" if (product_type or "").startswith("iPad") else "iOS" -%}
+  {%- if product_type or os_version -%}
+    {{ product_type or "Model unknown" }} · {{ system }} {{ os_version or "version unknown" }}
+  {%- else -%}
+    Model and iOS version appear after the first scan or backup
+  {%- endif -%}
+{%- endmacro %}
+
+{# The generation strip: newest run left, older runs fade. Failed runs are hatched and labelled,
+   so the state never depends on colour alone. #}
+{% macro strip(runs) -%}
+  <ol class="strip" aria-label="Recent backups, newest first">
+    {% for r in runs %}
+    <li class="gen {{ r.status }}" style="--age: {{ loop.index0 }}">
+      <span class="block" aria-hidden="true"></span>
+      <span class="label">{{ RUN_LABELS.get(r.status, r.status) }}</span>
+      <time datetime="{{ r.started_at }}">{{ r.started_at | ago }}</time>
+    </li>
+    {% else %}
+    <li class="gen empty"><span class="block" aria-hidden="true"></span><span class="label">No runs yet</span></li>
+    {% endfor %}
+  </ol>
+{%- endmacro %}
+
+{# Notification connector field sets, shared by the "add a connector" forms and each existing
+   connector's edit form: `v` is a flat dict of string fields (either a freshly submitted form or
+   connectors.form_defaults() for a saved connector), so both call sites can use the same macro.
+   Secrets are never read back into the page: a set secret shows a placeholder, and the field
+   stays empty until the user types a new value. #}
+{# One list of validation errors at the top of a form, with an id so the form itself can point
+   at it via aria-describedby (see below). The errors this project's routes return are
+   form-level, not field-level (validate_device_settings and friends return a flat list of
+   strings), so there is no per-field message to attach aria-describedby to on an individual
+   input without a view-side change; this is the accessible shape that fits the data we have. #}
+{# The sub-page row inside one area (Admin, Settings). Plain links, never a JavaScript tab widget:
+   every entry is its own page with its own address, so it survives a reload, a bookmark and the
+   back button, and works with JavaScript switched off like the rest of this app.
+   `current` is request.url.path. A deeper page marks its section - /admin/storage/browse keeps
+   "Storage" current - so the menu does not appear to lose its place while browsing the volume.
+   The root entry ("/admin", "/admin/defaults") is matched exactly, or it would light up everywhere. #}
+{% macro section_nav(items, current, label) -%}
+  <nav class="section-nav" aria-label="{{ label }}">
+    <ul>
+      {%- for href, text in items %}
+      {%- set depth = href.rstrip("/").count("/") %}
+      {%- set active = current == href or (depth > 1 and current.startswith(href ~ "/")) %}
+      {# The hrefs are ADMIN_NAV/SETTINGS_NAV in app.py, fixed tuples of root-relative paths that
+         no request can reach. The rule is right about the shape, so the promise is guarded rather
+         than asserted: test_a11y_templates.py checks every rendered section-nav href starts with
+         "/" and carries no scheme, and fails the moment a user-controlled value is passed in here.
+         The marker below sits at the end of its own line on purpose - semgrep ignores it on a
+         preceding line in these templates, which is how pair_code.html does it too. #}
+      <li><a href="{{ href }}" {% if active %}aria-current="page"{% endif %}>{{ text }}</a></li> {# nosemgrep: var-in-href #}
+      {%- endfor %}
+    </ul>
+  </nav>
+{%- endmacro %}
+
+{% macro error_list(errors, id) -%}
+  {% if errors %}
+  <ul id="{{ id }}" class="flash bad" role="alert">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+{%- endmacro %}
+
+{% macro secret_hint(secret_set) -%}
+  {% if secret_set %}set; leave blank to keep it{% else %}not set{% endif %}
+{%- endmacro %}
+
+{% macro email_fields(v, secret_set) -%}
+  <label>Label <input name="label" value="{{ v.label|default('') }}" maxlength="64" required></label>
+  <label>SMTP host <input name="host" value="{{ v.host|default('') }}" maxlength="255" required></label>
+  <label>SMTP port <input name="port" type="number" min="1" max="65535" value="{{ v.port|default('587') }}" required></label>
+  <label>Security
+    <select name="security">
+      {% for opt, txt in [("none", "None"), ("starttls", "STARTTLS"), ("tls", "TLS")] %}
+      <option value="{{ opt }}" {% if (v.security|default('starttls')) == opt %}selected{% endif %}>{{ txt }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>SMTP username <small>(optional)</small>
+    <input name="username" value="{{ v.username|default('') }}" maxlength="254" autocomplete="off">
+  </label>
+  <label>SMTP password <small>(optional, {{ secret_hint(secret_set) }})</small>
+    <input name="password" type="password" autocomplete="new-password">
+  </label>
+  <label>From address <input name="from_addr" type="email" value="{{ v.from_addr|default('') }}" required></label>
+  <label>Recipient addresses <small>(one per line)</small>
+    <textarea name="to" rows="2" spellcheck="false">{{ v.to|default('') }}</textarea>
+  </label>
+{%- endmacro %}
+
+{% macro telegram_fields(v, secret_set) -%}
+  <label>Label <input name="label" value="{{ v.label|default('') }}" maxlength="64" required></label>
+  <label>Bot token <small>({{ secret_hint(secret_set) }})</small>
+    <input name="bot_token" autocomplete="off" placeholder="123456789:AA-your-token">
+  </label>
+  <label>Chat id <small>(numeric, or @channel)</small>
+    <input name="chat_id" value="{{ v.chat_id|default('') }}" required>
+  </label>
+  <label>Topic id <small>(optional)</small>
+    <input name="topic_id" type="number" min="1" value="{{ v.topic_id|default('') }}">
+  </label>
+{%- endmacro %}
+
+{% macro apprise_fields(v, secret_set) -%}
+  <label>Label <input name="label" value="{{ v.label|default('') }}" maxlength="64" required></label>
+  <label>Apprise URL <small>({{ secret_hint(secret_set) }})</small>
+    <input name="url" autocomplete="off">
+  </label>
+{%- endmacro %}

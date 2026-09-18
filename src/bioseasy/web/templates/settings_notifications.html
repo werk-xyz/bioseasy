@@ -1,0 +1,53 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import section_nav %}
+{% block title %}Browser notifications · bioseasy{% endblock %}
+{% block content %}
+<h1>Browser notifications</h1>
+{% if settings_nav %}{{ section_nav(settings_nav, request.url.path, "Settings") }}{% endif %}
+{% include "_scope_note.html" %}
+<p class="lede">The same alerts email and Telegram send - failed, overdue, due, storage problems,
+  waiting for the passcode - delivered to this browser even with no tab open. One subscription per
+  browser, for your account only.</p>
+<p class="meta">On iPhone and iPad, add bioseasy to the Home Screen first (Share, "Add to Home
+  Screen"). A Safari tab cannot subscribe. Other browsers need no extra step.</p>
+
+{% if not push_available %}
+<p class="meta">Browser notifications are not set up on this server (no usable key). Ask an
+  admin to check the server logs.</p>
+{% elif push_subscribed %}
+<p class="flash">This browser is now subscribed to push notifications.</p>
+{% endif %}
+
+{% if push_status and push_status.last_push_ok == 0 %}
+<p class="flash bad">The last browser notification could not be delivered. If this keeps
+  happening, try removing and re-adding the subscription below.</p>
+{% endif %}
+
+<table class="runs">
+  <thead><tr><th>Browser</th><th>Added</th><th></th></tr></thead>
+  <tbody>
+  {% for s in push_subscriptions %}
+    <tr>
+      <td>{{ s.label or "(unlabelled)" }}</td>
+      <td><time datetime="{{ s.created_at }}">{{ s.created_at | ago }}</time></td>
+      <td>
+        <form method="post" action="/settings/notifications/push/{{ s.id }}/revoke">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="link">Remove</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="3">No browser subscribed yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if push_available %}
+<button type="button" class="button" id="push-subscribe-button"
+  data-vapid-key="{{ push_vapid_public_key }}" data-csrf="{{ csrf }}">Enable browser notifications</button>
+<p class="meta" id="push-subscribe-status"></p>
+<script src="/static/push-subscribe.js" defer></script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,13 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}Setup · {{ device.name or device.udid }} · bioseasy{% endblock %}
+{% block content %}
+<h1>Set up {{ device.name or device.udid }}</h1>
+<p class="meta">{{ kind }} · finish these steps once; after that this {{ kind }} backs up over Wi-Fi on its own.</p>
+
+{% for w in pair_warnings or [] %}<p class="flash">{{ w }}</p>{% endfor %}
+
+{% include "_device_setup.html" %}
+
+<p><a href="/devices/{{ device.udid }}">Skip to the device page</a></p>
+{% endblock %}

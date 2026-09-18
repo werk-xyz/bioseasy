@@ -1,0 +1,90 @@
+# bioseasy on a home server. This file is the sample for a normal deployment; copy it and adjust.
+#
+#   cp .env.example .env    # adjust BACKUP_ROOT, PUID/PGID
+#   docker compose up -d
+#   docker compose logs bioseasy | grep "use this token"   # one-time setup token (also in <data dir>/setup_token)
+#
+# It runs a published image and builds nothing. To build from this checkout instead, add the
+# overlay: docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# For a throwaway demo with simulated devices, use docker-compose.demo.yml (docs/building.md).
+#
+# Two services from one image: `bioseasy` serves the web UI, `worker` runs backups, discovery,
+# pairing and the schedule, so a restart of the web UI never stops a running backup.
+#
+# Host networking is required: devices are found over mDNS (Bonjour) on the LAN, which does not
+# cross Docker's bridge network.
+
+x-bioseasy: &bioseasy
+  image: ${BIOSEASY_IMAGE:-ghcr.io/werk-xyz/bioseasy:latest}
+  network_mode: host
+  restart: unless-stopped
+  # Every setting in .env reaches the container. Without this line, compose only read .env to fill
+  # in the ${...} placeholders below, and anything else set there - single sign-on, the base URL,
+  # the timezone - never arrived, silently. Optional, so a deployment without a .env still starts.
+  env_file:
+    - path: .env
+      required: false
+  user: "${PUID:-1000}:${PGID:-1000}"
+  volumes:
+    # App state and pair records. Keep this off the backup share: pair records grant device access.
+    - ${DATA_DIR:-./data}:/data
+    - ${BACKUP_ROOT:-./backups}:/backups
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 512m
+  pids_limit: 256
+
+services:
+  bioseasy:
+    <<: *bioseasy
+    environment:
+      BIOSEASY_PORT: ${BIOSEASY_PORT:-8080}
+      # The real device engine. `demo` simulates devices and never contacts one; that is what
+      # docker-compose.demo.yml switches on.
+      BIOSEASY_ENGINE: ${BIOSEASY_ENGINE:-pymobiledevice3}
+      BIOSEASY_SECURE_COOKIES: ${BIOSEASY_SECURE_COOKIES:-true}
+      # HTTPS without a reverse proxy. Off by default, because the documented setup puts a proxy in
+      # front and that proxy should own TLS. Set BIOSEASY_TLS=self-signed and name every address
+      # the machine is opened at - a certificate that carries none of the names in use matches
+      # nothing, and a browser cannot be told to trust it either:
+      #   BIOSEASY_TLS=self-signed
+      #   BIOSEASY_TLS_NAMES=backup.lan,192.168.1.10
+      # The certificate is made on first start under /data/tls and renewed before it expires.
+      # Browsers warn until it is trusted on the machine opening the page; browser notifications
+      # and the home-screen app need that trust (docs/install.md). Backups are unaffected either
+      # way - a backup is a separate TLS session with the device.
+      # To serve a certificate you already have, give both files instead:
+      #   BIOSEASY_TLS=on
+      #   BIOSEASY_TLS_CERT=/data/tls/your.crt
+      #   BIOSEASY_TLS_KEY=/data/tls/your.key
+      BIOSEASY_TLS: ${BIOSEASY_TLS:-}
+      BIOSEASY_TLS_NAMES: ${BIOSEASY_TLS_NAMES:-}
+      BIOSEASY_TLS_CERT: ${BIOSEASY_TLS_CERT:-}
+      BIOSEASY_TLS_KEY: ${BIOSEASY_TLS_KEY:-}
+    # Declared here as well as in the image: podman drops the Dockerfile HEALTHCHECK when the
+    # image is built in OCI format, and deploy scripts can only wait for a health state that exists.
+    healthcheck:
+      test: ["CMD", "python", "-m", "bioseasy.healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  worker:
+    <<: *bioseasy
+    command: ["bioseasy", "worker"]
+    environment:
+      BIOSEASY_ENGINE: ${BIOSEASY_ENGINE:-pymobiledevice3}
+    # The web service migrates, and in a demo deployment seeds, first. Migrations are safe to run
+    # from both at once (db.migrate), but a worker that starts on a half-seeded demo adds noise.
+    depends_on:
+      bioseasy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "bioseasy.healthcheck", "--worker"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s

@@ -1,0 +1,28 @@
+{% from "_macros.html" import status_pill %}
+{% set nc = netcheck_run %}
+{% set nc_running = nc and nc.state == "running" %}
+<section id="netcheck" class="status"
+  {% if nc_running %}hx-get="/devices/{{ device.udid }}/netcheck/status?return_to={{ netcheck_return_to }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <p class="status-line"><strong>Connectivity check</strong></p>
+  <p class="meta">Checks the connection from the server to the device: address, pairing, secure
+    session, Wi-Fi heartbeat and the backup service port.</p>
+  {% if nc_running %}
+  <p>{{ status_pill('accent', 'Running…') }}</p>
+  {% elif nc %}
+  <ul class="stack">
+    {% for step in nc.steps %}
+    <li>
+      {{ status_pill('ok' if step.ok else 'bad', 'OK' if step.ok else 'Failed') }}
+      <strong>{{ step.name }}</strong>
+      <p class="meta">{{ step.detail }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <form method="post" action="/devices/{{ device.udid }}/netcheck"
+    hx-post="/devices/{{ device.udid }}/netcheck" hx-target="#netcheck" hx-swap="outerHTML">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="return_to" value="{{ netcheck_return_to }}">
+    <button class="button" {% if nc_running %}disabled{% endif %}>Run connectivity check</button>
+  </form>
+</section>

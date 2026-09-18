@@ -1,0 +1,10 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}{{ status }} · bioseasy{% endblock %}
+{% block content %}
+<section class="narrow">
+  <h1>{{ {403: "Not allowed", 404: "Not found", 409: "Cannot do that now"}.get(status, "Something went wrong") }}</h1>
+  <p>{{ detail if detail and detail not in ("Not Found", "Forbidden") else "" }}</p>
+  <p><a href="/">Back to devices</a></p>
+</section>
+{% endblock %}

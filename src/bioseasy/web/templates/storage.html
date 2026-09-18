@@ -1,0 +1,24 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import status_pill, section_nav %}
+{% block title %}Storage · bioseasy{% endblock %}
+{% block content %}
+<h1>Storage</h1>
+{% if admin_nav %}{{ section_nav(admin_nav, request.url.path, "Admin") }}{% endif %}
+<dl class="facts">
+  <dt>Backup root</dt><dd><code>{{ root }}</code></dd>
+  <dt>State</dt><dd>{% if check.ok %}<span class="health ok">● Ready</span>{% else %}<span class="health bad">■ {{ check.problems | join("; ") }}</span>{% endif %}</dd>
+  <dt>Free</dt><dd>{{ ((check.free_bytes or 0) / 2**30) | round(1) }} GiB of {{ ((check.total_bytes or 0) / 2**30) | round(1) }} GiB
+    <small>(a backup refuses to start below the free-space threshold set on the <a href="/admin/defaults">Settings page</a>)</small></dd>
+  <dt>Hard links</dt><dd>{{ {True: "Supported: older generations share unchanged files", False: "Not supported: every generation is a full copy", None: "Unknown until initialised"}[check.hardlinks] }}</dd>
+  <dt>Mount</dt><dd>{% if mount_message %}{{ status_pill('warn' if mount_warning else 'muted', mount_message) }}{% else %}{{ status_pill('muted', 'Mount details are only available on Linux') }}{% endif %}</dd>
+</dl>
+<p><a href="/admin/storage/browse">Browse the backup volume</a></p>
+{% if not initialised %}
+<form method="post" action="/admin/storage/initialise">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p>Initialising writes a small marker file, so bioseasy can tell later whether this volume is really mounted.</p>
+  <button class="button">Use this backup root</button>
+</form>
+{% endif %}
+{% endblock %}

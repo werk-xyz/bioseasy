@@ -1,0 +1,15 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+<span {% if row and row.state == "calculating" %}hx-get="/admin/storage/browse/size?path={{ rel_path | urlencode }}" hx-trigger="every 2s" hx-swap="outerHTML" hx-target="this"{% endif %}>
+{%- if not row %}
+not calculated yet
+{%- elif row.state == "calculating" %}
+calculating…
+{%- else %}
+{{ row.bytes | filesizeformat }} ({{ row.files }} files, {{ row.computed_at | ago }})
+{%- endif %}
+<form method="post" action="/admin/storage/browse/recalculate" hx-post="/admin/storage/browse/recalculate" hx-target="closest span" hx-swap="outerHTML" style="display:inline">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="path" value="{{ rel_path }}">
+  <button class="link" type="submit">Recalculate</button>
+</form>
+</span>

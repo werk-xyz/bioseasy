@@ -1,0 +1,17 @@
+# Trivy: dependencies (uv.lock) and Dockerfile misconfiguration.
+#
+# Same threshold as the other gates in security.yml: HIGH and CRITICAL only. A second scanner
+# with a different cut would be a second definition of what "clean" means.
+scan:
+  scanners:
+    - vuln
+    - misconfig
+  skip-dirs:
+    # .venv is not committed (see .gitignore) but can exist locally after `uv sync`; skip it so a
+    # local run matches what CI sees on a fresh checkout, instead of also scanning every installed
+    # package's vendored copies a second time under a different path.
+    - .venv
+severity:
+  - HIGH
+  - CRITICAL
+exit-code: 1

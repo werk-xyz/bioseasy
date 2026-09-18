@@ -1,0 +1,25 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{# Imported here rather than inherited: this fragment is also rendered on its own, as the
+   out-of-band half of a status swap. #}
+{% from "_macros.html" import strip, run_result, TRIGGER_LABELS %}
+{# The run history, as its own fragment so it can travel with a status swap. "Back up now" replaces
+   only #status, and the table sat below it unchanged - so a run that had just failed was announced
+   at the top while the history two centimetres lower still listed the last three as fine, until
+   somebody reloaded. #}
+<section class="panel" id="recent-runs"{% if oob %} hx-swap-oob="true"{% endif %}>
+<h2>Recent runs</h2>
+{{ strip(s.runs) }}
+<table class="runs">
+  <caption class="visually-hidden">Recent backup runs, newest first</caption>
+  <thead><tr><th scope="col">Started</th><th scope="col">Trigger</th><th scope="col">Result</th><th scope="col">Message</th></tr></thead>
+  <tbody>
+  {% for r in s.runs %}
+    {# Relative time in the cell, exact time in the datetime attribute: a column of
+       "2026-09-16T21:06:16Z" is a log dump, and the precise value is one hover away. #}
+    <tr><td><time datetime="{{ r.started_at }}" title="{{ r.started_at }}">{{ r.started_at | ago }}</time></td><td>{{ TRIGGER_LABELS.get(r.trigger, r.trigger) }}</td><td>{{ run_result(r.status) }}</td><td>{{ r.message or "" }}</td></tr>
+  {% else %}
+    <tr><td colspan="4">No runs yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</section>

@@ -1,0 +1,126 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}Pair from my computer · bioseasy{% endblock %}
+{% block content %}
+<h1>Pair from my computer</h1>
+<p class="meta">Valid for <span id="pair-code-countdown" data-expires-at="{{ expires_at }}">10 minutes</span>, one use only.</p>
+<script>
+  (function () {
+    var el = document.getElementById("pair-code-countdown");
+    var expires = new Date(el.dataset.expiresAt).getTime();
+    function tick() {
+      var left = Math.max(0, Math.round((expires - Date.now()) / 1000));
+      el.textContent = left > 0 ? Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") + " more" : "0:00 more";
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+</script>
+
+{% if unencrypted_warning %}
+<p class="flash bad">This server's address is plain HTTP and not on this device's own network. The pair record
+would travel unencrypted; prefer HTTPS or a private network for this.</p>
+{% endif %}
+
+<h2>Use the bioseasy pairing app</h2>
+<p class="meta">No install needed: no uv, no Python, no Homebrew. All builds are unsigned; see the notes below.</p>
+<table class="runs">
+  <thead><tr><th scope="col">Platform</th><th scope="col">Download</th><th scope="col">Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>macOS (Apple Silicon)</td>
+      <td>
+        {% if helper_url_macos %}
+        <a href="{{ helper_url_macos }}">Download</a> {# nosemgrep: var-in-href - http(s) only, checked in config._http_url #}
+        {% else %}
+        <span class="meta">Not available on this server</span>
+        {% endif %}
+      </td>
+      <td class="meta">Unsigned; macOS blocks it on first launch (Gatekeeper). Right-click the app and choose
+      Open, or allow it under System Settings &gt; Privacy &amp; Security.</td>
+    </tr>
+    <tr>
+      <td>Linux (x64)</td>
+      <td>
+        {% if helper_url_linux %}
+        <a href="{{ helper_url_linux }}">Download</a> {# nosemgrep: var-in-href - http(s) only, checked in config._http_url #}
+        {% else %}
+        <span class="meta">Not available on this server</span>
+        {% endif %}
+      </td>
+      <td class="meta">Unsigned; make it executable first (<code>chmod +x</code>). USB pairing needs
+      <code>usbmuxd</code> installed (see pymobiledevice3's installation docs).</td>
+    </tr>
+    <tr>
+      <td>Windows (x64)</td>
+      <td>
+        {% if helper_url_windows %}
+        <a href="{{ helper_url_windows }}">Download</a> {# nosemgrep: var-in-href - http(s) only, checked in config._http_url #}
+        {% else %}
+        <span class="meta">Not available on this server</span>
+        {% endif %}
+      </td>
+      <td class="meta">Unsigned; Windows SmartScreen warns on first launch. Choose More info, then
+      Run anyway.</td>
+    </tr>
+  </tbody>
+</table>
+{% if not helper_url_macos and not helper_url_linux and not helper_url_windows %}
+<p class="meta">No download is configured yet. It can be built from <code>helper/</code>
+(see <code>helper/README.md</code> in the repository).</p>
+{% endif %}
+<ol>
+  <li>Download and open the app for your platform.</li>
+  <li>Enter the server address and the code below, then click Pair.</li>
+</ol>
+
+<p>
+  Server address <code id="pair-helper-address">{{ base_url }}</code>
+  <button type="button" class="button" data-copy-target="pair-helper-address">Copy</button>
+</p>
+<p>
+  Code <code id="pair-helper-code" style="font-size: 1.5em">{{ code }}</code>
+  <button type="button" class="button" data-copy-target="pair-helper-code">Copy</button>
+</p>
+<script>
+  (function () {
+    document.querySelectorAll("[data-copy-target]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var el = document.getElementById(button.getAttribute("data-copy-target"));
+        if (!el || !navigator.clipboard) return;
+        navigator.clipboard.writeText(el.textContent).then(function () {
+          var original = button.textContent;
+          button.textContent = "Copied";
+          setTimeout(function () { button.textContent = original; }, 1500);
+        });
+      });
+    });
+  })();
+</script>
+
+<h2>Or run one command</h2>
+<p class="meta">Run this on the computer the device is plugged into, not on the bioseasy server.</p>
+
+{# One block, not one per platform: the command is the same everywhere uv runs, and two headings
+   over the same line invite the reader to hunt for a difference that is not there. The install
+   commands below really do differ, and stay split. #}
+<pre><code>uv run {{ base_url }}/pair/{{ code }}/bioseasy-pair.py</code></pre>
+
+<p class="meta">Connect the device by USB, unlock it, run the command, and tap Trust when asked.</p>
+
+<details>
+  <summary>"command not found: uv"? Install uv first</summary>
+  <p class="meta">The command needs <a href="https://docs.astral.sh/uv/getting-started/installation/">uv</a>. Install it
+    once, then open a new terminal window and run the command above again.</p>
+  <p>macOS or Linux:</p>
+  <pre><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code></pre>
+  <p>macOS with Homebrew:</p>
+  <pre><code>brew install uv</code></pre>
+  <p>Windows (PowerShell):</p>
+  <pre><code>powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"</code></pre>
+</details>
+
+{% include "_pair_code_status.html" %}
+
+<p><a href="/add">Back to Add a device</a></p>
+{% endblock %}

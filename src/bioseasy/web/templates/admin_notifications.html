@@ -1,0 +1,65 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import section_nav %}
+{% block title %}Notifications · bioseasy{% endblock %}
+{% block content %}
+<h1>Notifications</h1>
+{{ section_nav(admin_nav, request.url.path, "Admin") }}
+<p class="meta">Where alerts for every device go. A device can add its own connectors on its own
+  settings page; those are sent in addition to these.</p>
+
+{% set scope = "admin" %}
+{% set base_url = "/admin/notifications" %}
+{% include "_connectors_section.html" %}
+
+<h2>Home Assistant (MQTT)</h2>
+<p class="meta">Publishes each device's backup state to an MQTT broker, with Home Assistant MQTT
+  discovery so entities appear on their own - no custom integration needed.</p>
+{# Collapsed like every connector above, and opened by the browser
+   itself whenever the form came back with errors, the same way _connectors_section.html does. #}
+<details class="connector" {% if mqtt_errors %}open{% endif %}>
+  <summary>Broker settings
+    <small>({% if not mqtt_settings.host %}not configured{% elif mqtt_settings.enabled %}{{ mqtt_settings.host }}, enabled{% else %}{{ mqtt_settings.host }}, disabled{% endif %})</small>
+  </summary>
+{% if mqtt_errors %}
+<ul class="flash bad">{% for e in mqtt_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+{% endif %}
+<form method="post" action="/admin/notifications/mqtt" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label class="checkbox-row">
+    <input name="mqtt_enabled" type="checkbox" value="1" {% if mqtt_settings.enabled %}checked{% endif %}>
+    Enabled
+  </label>
+  <label>Broker host <input name="host" value="{{ mqtt_settings.host|default('') }}" maxlength="255"></label>
+  <label>Broker port <input name="port" type="number" min="1" max="65535" value="{{ mqtt_settings.port|default('1883') }}"></label>
+  <label class="checkbox-row">
+    <input name="tls" type="checkbox" value="1" {% if mqtt_settings.tls %}checked{% endif %}>
+    Use TLS
+  </label>
+  <label>Username <small>(optional)</small>
+    <input name="username" value="{{ mqtt_settings.username|default('') }}" maxlength="254" autocomplete="off">
+  </label>
+  <label>Password <small>(optional, {% if mqtt_password_set %}set; leave blank to keep it{% else %}not set{% endif %})</small>
+    <input name="password" type="password" autocomplete="new-password">
+  </label>
+  <label>Base topic <input name="base_topic" value="{{ mqtt_settings.base_topic|default('bioseasy') }}" maxlength="64"></label>
+  <label>Discovery prefix <input name="discovery_prefix" value="{{ mqtt_settings.discovery_prefix|default('homeassistant') }}" maxlength="64"></label>
+  <button class="button">Save</button>
+</form>
+<div id="mqtt-test">
+  <form hx-post="/admin/notifications/mqtt/test" hx-target="#mqtt-test" hx-swap="outerHTML">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="button">Send test state</button>
+  </form>
+</div>
+</details>
+
+<h2>Test all notifications</h2>
+<p class="meta">Sends to every admin connector above.</p>
+<div id="notify-test">
+  <form hx-post="/admin/notifications/test" hx-target="#notify-test" hx-swap="outerHTML">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="button">Send test message</button>
+  </form>
+</div>
+{% endblock %}

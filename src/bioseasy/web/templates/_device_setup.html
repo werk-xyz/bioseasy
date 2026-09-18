@@ -1,0 +1,134 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% from "_macros.html" import status_pill %}
+{% set wifi_done = device.wifi_enabled_at %}
+{% set wifi_running = wifi_action and wifi_action.state == "running" %}
+{% set wifi_failed = wifi_action and wifi_action.state == "failed" %}
+{% set enc_done = device.encryption_enabled_at %}
+{% set enc_running = encryption_action and encryption_action.state == "running" %}
+{% set enc_failed = encryption_action and encryption_action.state == "failed" %}
+{% set backup_done = s.backup and s.backup.complete %}
+{% set all_done = wifi_done and enc_done and backup_done %}
+{% set detecting = setup_detect and setup_detect.state == "running" %}
+{% set detect_unreachable = setup_detect and setup_detect.state == "done" and setup_detect.message %}
+<section id="setup-checklist" class="stack"
+  {% if wifi_running or enc_running or detecting or s.job %}hx-get="/devices/{{ device.udid }}/setup/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+
+  {% if already_paired %}
+  <p class="flash">Already paired with this server: no new pairing needed.</p>
+  {% endif %}
+  {% if existing_snapshot_count > 0 %}
+  <p class="flash">Found existing backups of this device: {{ existing_snapshot_count }} generation{{ "s" if existing_snapshot_count != 1 else "" }}{% if existing_last_backup %}, last one {{ existing_last_backup | ago }}{% endif %}.</p>
+  {% endif %}
+  {% if detect_unreachable %}
+  <p class="flash warn">{{ setup_detect.message }}</p>
+  {% endif %}
+
+  <div class="status">
+    <p class="status-line"><strong>1. Paired</strong> {{ status_pill('ok', 'Done') }}</p>
+    <p class="meta">Your {{ kind }} trusts bioseasy.</p>
+  </div>
+
+  <div class="status">
+    <p class="status-line">
+      <strong>2. Wi-Fi connections enabled</strong>
+      {% if wifi_done %}{{ status_pill('ok', 'Already on (detected)' if not wifi_action else 'Enabled') }}
+      {% elif detecting %}{{ status_pill('accent', 'Checking the device…') }}
+      {% elif wifi_running %}{{ status_pill('accent', 'Enabling…') }}
+      {% elif wifi_failed %}{{ status_pill('bad', 'Failed') }}
+      {% else %}{{ status_pill('muted', 'Not enabled') }}
+      {% endif %}
+    </p>
+    {% if wifi_failed %}<p class="flash bad">{{ wifi_action.message }}</p>{% endif %}
+    {% if not wifi_done and not wifi_running %}
+    <form method="post" action="/devices/{{ device.udid }}/setup/wifi"
+      hx-post="/devices/{{ device.udid }}/setup/wifi" hx-target="#setup-checklist" hx-swap="outerHTML">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="button">Enable Wi-Fi backups</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="status">
+    <p class="status-line">
+      <strong>3. Backup encryption on</strong>
+      {% if enc_done %}{{ status_pill('ok', 'Already on (detected)' if not encryption_action else 'On') }}
+      {% elif detecting %}{{ status_pill('accent', 'Checking the device…') }}
+      {% elif enc_running %}{{ status_pill('accent', 'Turning on…') }}
+      {% elif enc_failed %}{{ status_pill('bad', 'Failed') }}
+      {% else %}{{ status_pill('muted', 'Off') }}
+      {% endif %}
+    </p>
+    {% if enc_running %}<p>Unlock the {{ kind }} and enter its passcode if asked. This can take a while.</p>{% endif %}
+    {% if enc_failed %}<p class="flash bad">{{ encryption_action.message }}</p>{% endif %}
+    {% if encryption_error %}<p class="flash bad">{{ encryption_error }}</p>{% endif %}
+    {% if not enc_done and not enc_running %}
+    <form method="post" action="/devices/{{ device.udid }}/setup/encryption"
+      hx-post="/devices/{{ device.udid }}/setup/encryption" hx-target="#setup-checklist" hx-swap="outerHTML"
+      class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <p class="meta">Without this password the backup cannot be restored, and bioseasy does not keep it.</p>
+      <label>Backup password
+        <input type="password" name="password" autocomplete="new-password" minlength="{{ min_password_chars }}" required>
+      </label>
+      <label>Repeat password
+        <input type="password" name="password2" autocomplete="new-password" minlength="{{ min_password_chars }}" required>
+      </label>
+      <button class="button">Turn on encryption</button>
+    </form>
+    {% endif %}
+    <details>
+      <summary>Already encrypted with a password you don't know?</summary>
+      <p>The {{ kind }} may already have backup encryption on from Finder, iTunes, or an earlier
+        pairing, with a password bioseasy never saw. Without that password an existing encrypted
+        backup of this device cannot be restored, and Apple cannot recover it.</p>
+      <p>To back up with a new password chosen here, first remove the old one on the device:
+        Settings, General, Transfer or Reset {{ kind }}, Reset, Reset All Settings, then enter
+        the device passcode. This does not erase your data and does not touch any backup already
+        on disk, but that existing encrypted backup can no longer be restored once its password
+        is gone.
+        {# Apple Support, "If you can't remember the password for your iPhone, iPad, or iPod
+           touch encrypted backup," https://support.apple.com/en-us/108313, retrieved
+           2026-09-15: "Tap Reset All Settings and enter your device passcode... This won't
+           affect your user data or passwords... Resetting your settings also removes your
+           encrypted backup password" and "Creating a new password doesn't allow you to access
+           previous encrypted backups." Requires iOS 11/iPadOS or later. #}
+      </p>
+    </details>
+  </div>
+
+  <div class="status">
+    <p class="status-line">
+      <strong>4. First backup complete</strong>
+      {% if backup_done %}{{ status_pill('ok', 'Complete') }}
+      {% elif s.job %}{{ status_pill('accent', 'Running…') }}
+      {% else %}{{ status_pill('muted', 'Not started') }}
+      {% endif %}
+    </p>
+    {% if not backup_done %}
+    {% include "_status.html" %}
+    {% endif %}
+  </div>
+
+  {% if all_done %}
+  <p class="flash">Setup complete. This {{ kind }} backs up over Wi-Fi on its own schedule from now on.</p>
+  {% include "_ios_home_hint.html" %}
+  {% endif %}
+
+  <div class="status">
+    <p class="status-line"><strong>Device address</strong></p>
+    <p class="meta">Only needed when the {{ kind }} is in a different network. Give it a fixed
+      address or a DHCP reservation on your router first, so it does not change later.</p>
+    {% if host_error %}<p class="flash bad">{{ host_error }}</p>{% endif %}
+    {% if host_saved %}<p class="flash">Address saved.</p>{% endif %}
+    <form method="post" action="/devices/{{ device.udid }}/setup/host"
+      hx-post="/devices/{{ device.udid }}/setup/host" hx-target="#setup-checklist" hx-swap="outerHTML">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Device IP address <small>(optional; leave empty to clear)</small>
+        <input name="host" value="{{ device.host or '' }}" maxlength="253" spellcheck="false">
+      </label>
+      <button class="button">Save address</button>
+    </form>
+  </div>
+
+  {% include "_netcheck.html" %}
+</section>

@@ -1,0 +1,43 @@
+# A throwaway demo: simulated devices, seeded content, nothing that touches a real iPhone.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+#
+# Use it to look around before installing for real, or to show somebody what the thing does. The
+# demo engine invents devices and writes structurally valid backups into a named volume; no
+# pairing, no passcode, no device ever contacted.
+#
+# Never point this at real data. The seed creates an account with credentials that are in the
+# source (src/bioseasy/demo_seed.py, marked as demo credentials), and BIOSEASY_DEMO_AUTOLOGIN
+# signs every visitor in as that user without asking.
+services:
+  bioseasy:
+    # No mDNS to do, so the demo does not need the host's network namespace: one published port
+    # is enough and keeps the container off the LAN.
+    network_mode: !reset null
+    user: !reset null
+    ports:
+      - "${BIOSEASY_PORT:-8080}:8080"
+    environment:
+      BIOSEASY_ENGINE: demo
+      BIOSEASY_DEMO_SEED: "true"
+      BIOSEASY_DEMO_AUTOLOGIN: "true"
+      BIOSEASY_HOST: 0.0.0.0
+      BIOSEASY_PORT: "8080"
+      # Plain HTTP, so the session cookie must not insist on being sent over HTTPS only.
+      BIOSEASY_SECURE_COOKIES: "false"
+    volumes: !override
+      - demo-data:/data
+      - demo-backups:/backups
+
+  worker:
+    network_mode: !reset null
+    user: !reset null
+    environment:
+      BIOSEASY_ENGINE: demo
+    volumes: !override
+      - demo-data:/data
+      - demo-backups:/backups
+
+volumes:
+  demo-data:
+  demo-backups:

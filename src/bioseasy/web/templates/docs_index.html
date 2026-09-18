@@ -1,0 +1,23 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}Docs · bioseasy{% endblock %}
+{% block content %}
+<h1>Docs</h1>
+{# Was: "rendered from docs/ in the image you are running" - true, and of interest to nobody who
+   came here with a question. #}
+<p class="lede">Guides for setting up and running bioseasy. They ship with this version, so they
+  describe what you are actually running.</p>
+
+{% for section in doc_sections %}
+<h2>{{ section.label }}</h2>
+<p class="meta">{{ section.intro }}</p>
+<ul class="docs-index rows">
+  {% for page in section.pages %}
+  <li>
+    <a href="/guide/{{ page.slug }}">{{ page.title }}</a>
+    {% if page.description %}<p class="meta">{{ page.description }}</p>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,46 @@
+# Lint and tests. The same two commands a contributor runs locally (CONTRIBUTING.md), so a green
+# checkout means a green pipeline and the other way round.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.26"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Ruff (lint)
+        run: uv run ruff check src tests
+
+      - name: Ruff (format)
+        run: uv run ruff format --check src tests
+
+      # rsync is not a convenience here: the snapshot tests take real hard-linked snapshots with
+      # it, and without it they fail rather than skip. ubuntu-latest ships it, the line is a guard
+      # against a future runner image that does not.
+      - name: Check rsync is present
+        run: rsync --version | head -1
+
+      - name: Tests
+        run: uv run pytest -q

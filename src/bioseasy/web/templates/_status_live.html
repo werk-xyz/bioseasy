@@ -1,0 +1,7 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{# What a status swap sends back: the status block itself, plus the run history as an out-of-band
+   swap so the two cannot disagree. Without it the history stayed as it was until a reload. #}
+{% include "_status.html" %}
+{% set oob = true %}
+{% include "_runs.html" %}
+{% include "_backup_on_disk.html" %}

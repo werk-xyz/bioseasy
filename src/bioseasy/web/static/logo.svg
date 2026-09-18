@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="t">
+  <title id="t">bioseasy</title>
+  <!-- A device outline holding three backup generations that fade with age:
+       the mark shows what the tool does (versions, retention) without an arrow cliche. -->
+  <style>
+    .ink { fill: none; stroke: #1b2a2f; }
+    .slot { fill: #1b2a2f; }
+    .gen { fill: #1f6f50; }
+    @media (prefers-color-scheme: dark) {
+      .ink { stroke: #ece6d9; }
+      .slot { fill: #ece6d9; }
+      .gen { fill: #4fb88a; }
+    }
+  </style>
+  <rect class="ink" x="15" y="5" width="34" height="54" rx="8" stroke-width="4"/>
+  <rect class="slot" x="27" y="10.5" width="10" height="3" rx="1.5"/>
+  <rect class="gen" x="22" y="22" width="20" height="7" rx="2"/>
+  <rect class="gen" x="22" y="33" width="20" height="7" rx="2" opacity="0.55"/>
+  <rect class="gen" x="22" y="44" width="20" height="7" rx="2" opacity="0.25"/>
+</svg>

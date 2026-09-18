@@ -1,0 +1,18 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{# What is actually on disk, as its own fragment so it can travel with a status swap. A backup that
+   had just finished was reported as done at the top of the page while this panel still said the
+   last one was eighteen minutes old, until somebody reloaded - the same shape as the run history
+   and the lock countdown before it. #}
+<section class="panel" id="backup-on-disk"{% if oob %} hx-swap-oob="true"{% endif %}>
+<h2>Backup on disk</h2>
+{% if s.backup %}
+<dl class="facts">
+  <dt>Complete</dt><dd>{{ "Yes" if s.backup.complete else "No: " ~ (s.backup.problems | join("; ")) }}</dd>
+  <dt>Encrypted</dt><dd>{{ {True: "Yes", False: "No", None: "Unknown"}[s.backup.encrypted] }}</dd>
+  <dt>Last backup</dt><dd>{{ s.backup.last_backup | ago }}</dd>
+  <dt>Location</dt><dd><code>{{ s.backup.path }}</code></dd>
+</dl>
+{% else %}
+<p>No backup of this device on disk yet.</p>
+{% endif %}
+</section>

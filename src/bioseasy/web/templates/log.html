@@ -1,0 +1,72 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import status_pill %}
+{% block title %}Log · bioseasy{% endblock %}
+{% block content %}
+<h1>Log</h1>
+{# The earlier version spent its second sentence explaining that this is not the server's log -
+   a distinction only an admin knows exists, and one the Admin area already makes. #}
+<p class="lede">Every finished backup and every generation check on your devices, newest first.</p>
+<form method="get" action="/log" class="filters">
+  <label>Event
+    <select name="kind">
+      <option value="">All events</option>
+      {% for k in kinds %}
+      <option value="{{ k }}" {% if filter_kind == k %}selected{% endif %}>{{ kind_labels[k] }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Device
+    <select name="device">
+      <option value="">All your devices</option>
+      {% for d in scope_devices %}
+      <option value="{{ d.udid }}" {% if filter_device == d.udid %}selected{% endif %}>{{ d.name or d.udid }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="button">Filter</button>
+</form>
+{% if entries %}
+<table class="runs">
+  <caption class="visually-hidden">Device events</caption>
+  <thead>
+    <tr>
+      <th scope="col">Time</th>
+      <th scope="col">Event</th>
+      <th scope="col">Device</th>
+      <th scope="col">Outcome</th>
+      <th scope="col">Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td><time datetime="{{ e.at }}">{{ e.at | ago }}</time></td>
+      <td>
+        {{ e.label }}
+        {% if e.snapshot_name %}<span class="meta">{{ e.snapshot_name }}</span>{% endif %}
+      </td>
+      <td>{{ e.device_name }}</td>
+      <td>{{ status_pill(e.outcome_class, e.outcome_word) }}</td>
+      <td>
+        {{ e.detail }}
+        {% if e.trigger %}<span class="meta">{{ e.trigger }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<nav class="pager" aria-label="Log pages">
+  {% set qs = {"kind": filter_kind, "device": filter_device} %}
+  {% if event_page.page > 1 %}
+  <a href="/log?{{ dict(qs, page=event_page.page - 1) | urlencode }}">Newer</a>
+  {% endif %}
+  <span class="meta">Page {{ event_page.page }} of {{ ((event_page.total - 1) // event_page.page_size) + 1 if event_page.total else 1 }} ({{ event_page.total }} events)</span>
+  {% if event_page.has_more %}
+  <a href="/log?{{ dict(qs, page=event_page.page + 1) | urlencode }}">Older</a>
+  {% endif %}
+</nav>
+{% else %}
+<p>Nothing has happened to your devices yet. A finished backup or a generation check appears here.</p>
+{% endif %}
+{% endblock %}

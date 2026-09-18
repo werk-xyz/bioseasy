@@ -1,0 +1,23 @@
+# Allowlist for the secrets scan (.github/workflows/security.yml, job "secrets").
+#
+# Every entry matches one exact literal value, never a path or a directory. A path exception
+# would skip the whole file for every rule, and a real secret planted anywhere else in that file
+# would then go undetected; matching the value keeps the rest of each file covered. Each value
+# here is either a marked demo/test fake or a false positive, and the description says which.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Marked demo credential, src/bioseasy/demo_seed.py: DEMO_PASSWORD. Module docstring: \"DEMO CREDENTIALS, NOT A SECRET\". Only exists when BIOSEASY_ENGINE=demo and BIOSEASY_DEMO_SEED=true; nothing real ever uses it."
+regexTarget = "secret"
+regexes = ['''demo-password-not-secret''']
+
+[[allowlists]]
+description = "Test fixture, tests/test_diagnostics.py: FAKE_BOT_TOKEN, planted to prove the diagnostics report redacts it. Already marked \"not a real credential\" in the source line."
+regexTarget = "secret"
+regexes = ['''123456789:AAFakeTelegramTokenPlantedByTest0000000''']
+
+[[allowlists]]
+description = "False positive, tests/test_extract.py: the generic-api-key rule reads a chunk size as a credential because the identifier BACKUP_PASSWORD precedes it in the same call. There is no secret here, the value is a buffer size."
+regexTarget = "secret"
+regexes = ['''chunk_bytes=64''']

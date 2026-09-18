@@ -1,0 +1,48 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% from "_macros.html" import health %}
+{% set kind = s.device.product_type | kind %}
+{%- if s.job and s.job.phase == "starting" %}{% set announce = "Backup started." %}
+{%- elif s.job and s.job.phase == "waiting_for_passcode" %}{% set announce = "Unlock the device and enter its passcode." %}
+{%- elif s.job and s.job.phase == "transferring" %}{% set announce = "Transferring the backup." %}
+{%- elif s.job %}{% set announce = (s.job.phase | replace("_", " ") | capitalize) ~ "." %}
+{%- elif s.runs and s.runs[0].status in ("failed", "not_confirmed") %}{% set announce = ("Not confirmed: " if s.runs[0].status == "not_confirmed" else "Last run failed: ") ~ s.runs[0].message %}
+{%- else %}{% set announce = "No backup running." %}{% endif %}
+<section id="status" class="status" data-announce="{{ announce }}"
+  {% if s.job %}hx-get="/devices/{{ s.device.udid }}/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="status-line">
+    {{ health(s) }}
+    {% if not s.job %}
+    <form method="post" action="/devices/{{ s.device.udid }}/backup" hx-post="/devices/{{ s.device.udid }}/backup" hx-target="#status" hx-swap="outerHTML">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="button">Back up now</button>
+    </form>
+    {% else %}
+    <button class="button" disabled>Backup running</button>
+    {% endif %}
+  </div>
+  {% if backup_error %}<p class="flash bad">{{ backup_error }}</p>{% endif %}
+  {% if s.job %}
+    {% if s.job.phase == "starting" %}
+    <p><strong>Backup started.</strong> Enter your passcode on the {{ kind }} when it asks. The first backup can take a long time; it runs on the server, so you can close this page. Keep the {{ kind }} on Wi-Fi and charging.</p>
+    {% else %}
+    {% if s.job.phase == "waiting_for_passcode" %}
+    <p class="prompt"><strong>{{ s.job.phase | phase_text(kind) }}</strong> The backup starts once you confirm.</p>
+    {% elif s.job.phase == "transferring" %}
+    <p>Transferring{% if s.job.percent is not none %} · {{ s.job.percent | int }} %{% endif %}</p>
+    {% else %}
+    <p>{{ s.job.phase | phase_text(kind) }}…</p>
+    {% endif %}
+    {% if s.job.phase == "transferring" %}
+    <progress max="100" {% if s.job.percent is not none %}value="{{ s.job.percent }}"{% endif %}></progress>
+    {% endif %}
+    <p class="meta">Running for {{ s.run_running_for }} · last data {{ s.run_last_data }} ago</p>
+    <p class="meta">You can close this page; the backup keeps running on the server.</p>
+    {% if s.run_stall_hint %}<p class="flash warn">{{ s.run_stall_hint }}</p>{% endif %}
+    {% endif %}
+  {% elif s.runs and s.runs[0].status in ("failed", "not_confirmed") %}
+    <p class="flash bad">
+      <strong>{{ "Not confirmed:" if s.runs[0].status == "not_confirmed" else "Last run failed:" }}</strong>
+      {{ s.runs[0].message }}
+    </p>
+  {% endif %}
+</section>

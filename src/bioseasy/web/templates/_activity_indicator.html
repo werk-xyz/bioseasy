@@ -1,0 +1,59 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+<div class="activity-indicator" id="activity-indicator"
+     hx-get="/activity" hx-trigger="every 8s" hx-swap="outerHTML"
+     data-event-id="{{ latest_event_id }}" data-event-text="{{ latest_event_text }}">
+  <button type="button" class="icon-button" id="activity-button" aria-haspopup="true"
+    aria-expanded="false" aria-controls="activity-popover"
+    aria-label="{% if activity_running %}{% if activity_count == 1 %}{{ activities[0].label }} running{% else %}{{ activity_count }} jobs running{% endif %}{% elif activity_outcome == 'succeeded' %}{{ finished_activities[0].label }} finished {{ finished_activities[0].finished_ago_seconds | duration }} ago{% elif activity_outcome in ['failed', 'not_confirmed'] %}{{ finished_activities[0].label }} {{ finished_activities[0].outcome_label }}{% else %}Background jobs, none running{% endif %}">
+    <svg class="icon-gear{% if activity_running %} spin{% endif %}" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Zm9.9 2.1-1.9-.5a7.9 7.9 0 0 0-.66-1.58l1-1.7a.6.6 0 0 0-.09-.74l-1.16-1.16a.6.6 0 0 0-.74-.09l-1.7 1a7.9 7.9 0 0 0-1.58-.66l-.5-1.9a.6.6 0 0 0-.58-.45h-1.64a.6.6 0 0 0-.58.45l-.5 1.9c-.56.17-1.09.39-1.58.66l-1.7-1a.6.6 0 0 0-.74.09L6.05 5.97a.6.6 0 0 0-.09.74l1 1.7c-.27.49-.49 1.02-.66 1.58l-1.9.5a.6.6 0 0 0-.45.58v1.64c0 .27.19.51.45.58l1.9.5c.17.56.39 1.09.66 1.58l-1 1.7a.6.6 0 0 0 .09.74l1.16 1.16c.19.19.5.23.74.09l1.7-1c.49.27 1.02.49 1.58.66l.5 1.9c.07.26.31.45.58.45h1.64c.27 0 .51-.19.58-.45l.5-1.9a7.9 7.9 0 0 0 1.58-.66l1.7 1c.24.14.55.1.74-.09l1.16-1.16a.6.6 0 0 0 .09-.74l-1-1.7c.27-.49.49-1.02.66-1.58l1.9-.5a.6.6 0 0 0 .45-.58v-1.64a.6.6 0 0 0-.45-.58Z"></path>
+    </svg>
+    {% if activity_running and activity_count %}
+    <span class="activity-count" aria-hidden="true">{{ activity_count }}</span>
+    {% elif not activity_running and activity_outcome == 'succeeded' %}
+    <span class="activity-badge activity-badge-ok" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="12" height="12" focusable="false"><path fill="currentColor" d="M9.3 16.2 5.1 12l-1.4 1.4L9.3 19 20.3 8l-1.4-1.4z"></path></svg>
+    </span>
+    {% elif not activity_running and activity_outcome in ['failed', 'not_confirmed'] %}
+    <span class="activity-badge activity-badge-warn" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="12" height="12" focusable="false"><path fill="currentColor" d="M12 3 1 21h22L12 3Zm-1 6h2v6h-2V9Zm0 8h2v2h-2v-2Z"></path></svg>
+    </span>
+    {% endif %}
+  </button>
+  <div class="popover" id="activity-popover" role="dialog" aria-label="Background jobs" tabindex="-1" hidden>
+    <section>
+      <h2 class="popover-heading">Running</h2>
+      {% if activities %}
+      <ul class="activity-list">
+        {% for a in activities %}
+        <li>
+          <strong>{{ a.label }}</strong>{% if a.device_name %} &middot; {{ a.device_name }}{% endif %}
+          {% if a.phase %}<br><span class="meta">{{ a.phase }}</span>{% endif %}
+          <br><span class="meta">Running for {{ a.running_for_seconds | duration }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">No running jobs.</p>
+      {% endif %}
+    </section>
+    <section>
+      <h2 class="popover-heading">Recently finished</h2>
+      {% if finished_activities %}
+      <ul class="activity-list">
+        {% for a in finished_activities %}
+        <li>
+          <strong>{{ a.label }}</strong>{% if a.device_name %} &middot; {{ a.device_name }}{% endif %}
+          <br><span class="meta activity-outcome-{{ a.outcome }}">
+            {% if a.outcome == 'succeeded' %}&check;{% else %}&#9650;{% endif %}
+            {{ a.outcome_label }}{% if a.detail %}: {{ a.detail }}{% endif %} &middot; {{ a.finished_ago_seconds | duration }} ago
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">Nothing finished recently.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>

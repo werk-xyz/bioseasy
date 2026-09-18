@@ -1,0 +1,353 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% block title %}Files: {{ device.name or device.udid }} · bioseasy{% endblock %}
+{% block main_class %} class="wide"{% endblock %}
+{% block content %}
+<h1>Files in a backup</h1>
+<p class="lede">{{ device.name or device.udid }} · download single files without restoring the
+  device. Nothing here changes the backup or the device.</p>
+
+{# Columns rather than one long table: generations on the left, then areas,
+   then one column per folder level. The trail stays visible, the page stays the same height
+   whatever the folder holds, and a selection is a path - so a folder of five thousand photos is
+   one tick, not five thousand checkboxes. #}
+{% set NOTHING = "" %}
+{% set qs = {"snapshot": generation or "", "domain": open_domain or "", "path": open_path or "",
+             "q": filter_query or "", "scope": filter_scope or "all"} %}
+{# Navigation links reset paging on purpose - a different folder is a different column. A POST that
+   only ticks a checkbox must not: without this, ticking a file after "Show more" collapsed the
+   column back to its first page and took the row with it. #}
+{% set keep = dict(qs, page=page | default(1), hits=hits | default(1)) %}
+
+{% if state == "browse" %}
+<form method="get" action="/devices/{{ device.udid }}/files" class="filters">
+  <input type="hidden" name="snapshot" value="{{ generation }}">
+  <input type="hidden" name="domain" value="{{ open_domain }}">
+  <input type="hidden" name="path" value="{{ open_path }}">
+  <label>Search
+    <input name="q" value="{{ filter_query }}" placeholder="part of a file name or path" spellcheck="false">
+  </label>
+  <label>In
+    <select name="scope">
+      <option value="all" {% if filter_scope != "domain" %}selected{% endif %}>All areas</option>
+      <option value="domain" {% if filter_scope == "domain" %}selected{% endif %}
+        {% if not open_domain %}disabled{% endif %}>{{ open_domain or "the open area" }}</option>
+    </select>
+  </label>
+  <button class="button">Search</button>
+  {% if filter_query %}
+  {% set without_search = dict(qs, q=NOTHING) %}
+  <a href="/devices/{{ device.udid }}/files?{{ without_search | urlencode }}">Clear search</a>
+  {% endif %}
+</form>
+{% endif %}
+
+<div id="browser">
+{% if state == "browse" and unlocked %}
+<div class="actions">
+  <span class="meta">Unlocked. Locks again after
+    <strong id="lock-countdown" data-seconds="{{ seconds_left }}">{{ (seconds_left // 60) }} min</strong>
+    without activity.</span>
+  <form method="post" action="/devices/{{ device.udid }}/files/lock">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="button secondary">Lock now</button>
+  </form>
+</div>
+{% endif %}
+{% if chosen %}
+<div class="selection-bar">
+  <form method="post" action="/devices/{{ device.udid }}/files/download?snapshot={{ generation }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="button">Download {{ chosen | length }} selected as .tar</button>
+  </form>
+  <form method="post" action="/devices/{{ device.udid }}/files/select?{{ keep | urlencode }}"
+    hx-post="/devices/{{ device.udid }}/files/select?{{ keep | urlencode }}"
+    hx-target="#browser" hx-select="#browser" hx-swap="outerHTML">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="clear" value="1">
+    <button class="link">Clear selection</button>
+  </form>
+  <ul class="chips">
+    {% for d, pth in chosen %}
+    <li>{{ d }}{% if pth %}/{{ pth }}{% else %} <span class="meta">(whole area)</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="finder">
+  {# Column one: the generations. A generation is a finished copy; the live backup is the one that
+     a running job rewrites underneath a reader. #}
+  <section class="fcol" aria-label="Generations">
+    <h2 class="fcol-head">Generation</h2>
+    <ul>
+      {% for g in timeline %}
+      {% set busy = writing and g.key == "latest" %}
+      <li class="frow{% if g.current %} open{% endif %}">
+        {% if g.exists and not busy %}
+        <a href="/devices/{{ device.udid }}/files?snapshot={{ g.key }}">{{ g.label }}</a>
+        <span class="meta">{% if g.encrypted %}🔒{% endif %}</span>
+        {% elif busy %}
+        <span>{{ g.label }}</span>
+        <span class="meta">being written</span>
+        {% else %}
+        <span class="meta">{{ g.label }} - none yet</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if state == "locked" %}
+  <section class="fcol fcol-wide">
+    <h2 class="fcol-head">Encrypted</h2>
+    <div class="fcol-body">
+      {% if unlock_error %}<p class="flash bad" role="alert">{{ unlock_error }}</p>{% endif %}
+      {% if demo_backup_password %}
+      <p class="flash">Demo environment: the backup password is <strong>{{ demo_backup_password }}</strong>.</p>
+      {% endif %}
+      <form method="post" action="/devices/{{ device.udid }}/files/unlock?snapshot={{ generation }}" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Backup password
+          <input type="password" name="backup_password" autocomplete="off" required autofocus>
+        </label>
+        <button class="button">Unlock</button>
+      </form>
+      <p class="meta">A generation made before a password change needs the password it was made
+        with, not the current one.</p>
+    </div>
+  </section>
+
+  {% elif state == "problem" %}
+  <section class="fcol fcol-wide">
+    <div class="fcol-body"><p class="flash bad">{{ problem }}</p></div>
+  </section>
+
+  {% elif state == "choose" %}
+  <section class="fcol fcol-wide">
+    <div class="fcol-body">
+      <p>Pick a generation on the left. Each one holds the files as they were when it was taken.</p>
+      {% if writing %}<p class="meta">A backup is running, so the latest backup cannot be opened
+        right now - it is being rewritten as the run goes.</p>{% endif %}
+    </div>
+  </section>
+
+  {% elif state == "browse" %}
+  {% for column in columns %}
+  <section class="fcol" aria-label="{{ column.title }}">
+    <h2 class="fcol-head">{{ column.title }}</h2>
+    <ul>
+      {% for row in column.rows %}
+      {% set row_domain = row.domain %}
+      {% set row_path = row.path %}
+      {% set is_open = (column.current == row.name) %}
+      <li class="frow{% if is_open %} open{% endif %}">
+        <form method="post" action="/devices/{{ device.udid }}/files/select?{{ keep | urlencode }}"
+          hx-post="/devices/{{ device.udid }}/files/select?{{ keep | urlencode }}"
+          hx-target="#browser" hx-select="#browser" hx-swap="outerHTML">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="target_domain" value="{{ row_domain }}">
+          <input type="hidden" name="target_path" value="{{ row_path }}">
+          <input type="hidden" name="on" value="{{ 0 if row.selected else 1 }}">
+          <input type="checkbox" {% if row.selected or row.covered %}checked{% endif %}
+            {% if row.covered %}disabled title="Already included by {{ row.covered }}"{% endif %}
+            onchange="this.form.requestSubmit()"
+            aria-label="Select {{ row_domain }}{% if row_path %}/{{ row_path }}{% endif %}">
+          <noscript><button class="link">Set</button></noscript>
+        </form>
+        {% if row.is_folder %}
+        {# The search rides along into the folder. It used to be dropped here, which was right
+           while the results were a table below the browser and wrong now that they are a column
+           of their own: walking the trail would empty the column the reader is reading. Paging is
+           not carried - a different folder is a different column, and so is a narrowed search. #}
+        {% set into = dict(qs, domain=row_domain, path=row_path) %}
+        <a href="/devices/{{ device.udid }}/files?{{ into | urlencode }}"
+          >{{ row.name }}{% if column.kind != "domains" %}/{% endif %}</a>
+        <span class="meta">{{ row.count }}</span>
+        {% else %}
+        <a class="fname" href="/devices/{{ device.udid }}/files/download?file_id={{ row.file_id }}&amp;snapshot={{ generation }}"
+          >{{ row.name }}</a>
+        <span class="meta">{% if row.size is none %}?{% else %}{{ row.size | filesizeformat }}{% endif %}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if column.kind == "files" and column.total %}
+    {# Ticking this column's own row in the column to its left does the same thing, but nobody
+       finds that while standing in the folder they want. One entry either way: the path. #}
+    {% set all_selected = column.selected or column.covered %}
+    <div class="fcol-more">
+      {% if column.total > column.shown %}
+      <a href="/devices/{{ device.udid }}/files?{{ dict(keep, page=page + 1) | urlencode }}"
+        >Show more ({{ column.shown }} of {{ column.total }})</a>
+      {% else %}
+      <span class="meta">{{ column.total }} here</span>
+      {% endif %}
+      <form method="post" action="/devices/{{ device.udid }}/files/select?{{ keep | urlencode }}"
+        hx-post="/devices/{{ device.udid }}/files/select?{{ keep | urlencode }}"
+        hx-target="#browser" hx-select="#browser" hx-swap="outerHTML">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="target_domain" value="{{ column.domain }}">
+        <input type="hidden" name="target_path" value="{{ column.path }}">
+        <input type="hidden" name="on" value="{{ 0 if all_selected else 1 }}">
+        {# One line on purpose: a wrapped label puts a newline inside the button's text, which
+           reads fine but makes the words and the number two separate strings in the markup. #}
+        <button class="link">{% if all_selected %}Deselect{% else %}Select{% endif %} all {{ column.total }}{% if not column.path %} in this area{% endif %}</button>
+      </form>
+    </div>
+    {% elif column.total > column.shown %}
+    <p class="fcol-more">
+      <a href="/devices/{{ device.udid }}/files?{{ dict(keep, page=page + 1) | urlencode }}"
+        >Show more ({{ column.shown }} of {{ column.total }})</a>
+    </p>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  {# The matches, as one more column at the right-hand end. Same rows, same checkboxes, same
+     select route as any folder column - a search is a different way of naming files, not a
+     different way of picking them - and the folder columns it was searched from stay to its left,
+     so the trail is still there to walk back. #}
+  {% if hits_column %}
+  <section class="fcol fcol-hits" aria-label="Search results">
+    <h2 class="fcol-head">Matches</h2>
+    {% if hits_column.rows %}
+    <ul>
+      {% for row in hits_column.rows %}
+      <li class="frow hit">
+        <form method="post" action="/devices/{{ device.udid }}/files/select?{{ keep | urlencode }}"
+          hx-post="/devices/{{ device.udid }}/files/select?{{ keep | urlencode }}"
+          hx-target="#browser" hx-select="#browser" hx-swap="outerHTML">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="target_domain" value="{{ row.domain }}">
+          <input type="hidden" name="target_path" value="{{ row.path }}">
+          <input type="hidden" name="on" value="{{ 0 if row.selected else 1 }}">
+          <input type="checkbox" {% if row.selected or row.covered %}checked{% endif %}
+            {% if row.covered %}disabled title="Already included by {{ row.covered }}"{% endif %}
+            onchange="this.form.requestSubmit()"
+            aria-label="Select {{ row.domain }}/{{ row.path }}">
+          <noscript><button class="link">Set</button></noscript>
+        </form>
+        {# Where the hit lies, under its name: a result list without the path is a list of names
+           that all look alike, and truncating the long side of "Domain/a/b/c/IMG_0001.JPG" would
+           eat the file name instead. #}
+        <a class="fname" href="/devices/{{ device.udid }}/files/download?file_id={{ row.file_id }}&amp;snapshot={{ generation }}"
+          ><span class="fhit">{{ row.name }}</span><span class="fpath">{{ row.domain }}/{{ row.path }}</span></a>
+        <span class="meta">{% if row.size is none %}?{% else %}{{ row.size | filesizeformat }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="fcol-more">
+      {# "Show more" like every other column, not the Previous/Next this list used to carry: a
+         page that replaces the one before it takes away matches the reader has already read past,
+         and the row they ticked two screens up with it. #}
+      {% if hits_column.total > hits_column.shown %}
+      <a href="/devices/{{ device.udid }}/files?{{ dict(keep, hits=(hits | default(1)) + 1) | urlencode }}"
+        >Show more ({{ hits_column.shown }} of {{ hits_column.total }})</a>
+      {% else %}
+      <span class="meta">{{ hits_column.total }} found{% if filter_scope == "domain" and open_domain %}
+        in {{ open_domain }}{% endif %}</span>
+      {% endif %}
+      {# No "Select all N" here, unlike a folder column. A selection is stored as paths, which is
+         what keeps five thousand photos one entry; a result list is not a path and nothing covers
+         exactly it, so the choice was N entries pretending to be one or none at all. Ticking the
+         folder a hit sits in is still one tick, one column to the left. #}
+    </div>
+    {% else %}
+    <div class="fcol-body">
+      <p>No files match “{{ filter_query }}”{% if filter_scope == "domain" and open_domain %}
+        in {{ open_domain }}{% endif %}.</p>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+  {% endif %}
+</div>
+</div>
+
+<script>
+  // Arrow keys, the way a column browser is normally driven: up and down within a column, right to
+  // open the focused folder, left back to the column it came from. Tab and Enter already work
+  // without any of this - every row is a link - but walking a deep tree by Tab means passing every
+  // checkbox on the way, which is a lot of keystrokes for the one move people make most.
+  //
+  // The search results need no case of their own here: they are a .fcol with .frow rows like any
+  // other column, so up and down walk them, left goes back into the folder trail, and right on a
+  // match opens it - which for a file means downloading it, exactly as it does in a folder column.
+  (function () {
+    const strip = document.querySelector(".finder");
+    if (!strip) return;
+
+    const rowsOf = (column) => Array.from(column.querySelectorAll(".frow > a"));
+    const columnOf = (element) => element.closest(".fcol");
+
+    strip.addEventListener("keydown", (event) => {
+      const here = document.activeElement;
+      if (!here || !here.matches(".frow > a")) return;
+      const column = columnOf(here);
+      const rows = rowsOf(column);
+      const index = rows.indexOf(here);
+      const columns = Array.from(strip.querySelectorAll(".fcol"));
+      const columnIndex = columns.indexOf(column);
+      let target = null;
+
+      if (event.key === "ArrowDown") target = rows[Math.min(index + 1, rows.length - 1)];
+      else if (event.key === "ArrowUp") target = rows[Math.max(index - 1, 0)];
+      else if (event.key === "ArrowRight") {
+        // Into the column this row opened if it is already there, otherwise open it.
+        const next = columns[columnIndex + 1];
+        const opened = column.querySelector(".frow.open > a");
+        if (next && opened === here) target = rowsOf(next)[0];
+        else { here.click(); return; }
+      } else if (event.key === "ArrowLeft") {
+        const previous = columns[columnIndex - 1];
+        if (previous) target = previous.querySelector(".frow.open > a") || rowsOf(previous)[0];
+      } else return;
+
+      if (target) {
+        event.preventDefault();
+        target.focus();
+        target.scrollIntoView({ block: "nearest" });
+      }
+    });
+  })();
+
+  // A column browser is only usable if it is already showing the column you just opened. The
+  // strip scrolls rather than the window growing - the same as Finder - so after every render it
+  // is pinned to the right-hand end. Instant, not smooth: this is where the reader already is,
+  // not a movement they should have to watch.
+  (function () {
+    const pin = () => {
+      const strip = document.querySelector(".finder");
+      if (strip) strip.scrollLeft = strip.scrollWidth;
+    };
+    pin();
+    // htmx swaps the strip in place when a row is ticked, so pin it again afterwards.
+    document.body.addEventListener("htmx:afterSwap", pin);
+  })();
+
+  // Counts the unlock down so the reader can see it coming instead of being logged out of the
+  // backup mid-click. Every page load pushes the deadline back out again (the limit is fifteen
+  // minutes of inactivity), so this only ever runs down on a page nobody is using.
+  (function () {
+    // The element is looked up every tick rather than captured once: htmx replaces the block it
+    // sits in whenever a row is ticked, and the replacement carries a fresh deadline from the
+    // server. A captured reference would keep counting down the old one and reload the page while
+    // the session was in fact freshly extended - a display contradicting the thing it reports.
+    let watched = null, left = 0;
+    setInterval(() => {
+      const el = document.getElementById("lock-countdown");
+      if (!el) { watched = null; return; }
+      if (el !== watched) {
+        watched = el;
+        left = parseInt(el.dataset.seconds || "0", 10);
+      } else {
+        left -= 1;
+      }
+      if (left <= 0) { window.location.reload(); return; }
+      const m = Math.floor(left / 60), s = left % 60;
+      el.textContent = m > 0 ? `${m} min ${String(s).padStart(2, "0")} s` : `${s} s`;
+    }, 1000);
+  })();
+</script>
+{% endblock %}

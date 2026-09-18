@@ -1,0 +1,74 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import error_list, section_nav %}
+{% block title %}Defaults · bioseasy{% endblock %}
+{% block content %}
+<h1>Defaults</h1>
+{% if admin_nav %}{{ section_nav(admin_nav, request.url.path, "Admin") }}{% endif %}
+
+{{ error_list(errors, "settings-errors") }}
+{% if not errors and saved %}
+<p class="flash">Defaults saved.</p>
+{% endif %}
+
+<h2>Global backup defaults</h2>
+<p class="meta">Apply to every device unless it sets its own override on its own Settings page.</p>
+<form method="post" action="/admin/defaults" class="stack" {% if errors %}aria-describedby="settings-errors"{% endif %}>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Scheduled window start <small>(local time)</small>
+    <input name="window_start" type="time" value="{{ defaults_form.window_start if defaults_form else global_defaults.window_start }}" required>
+  </label>
+  <label>Scheduled window end
+    <input name="window_end" type="time" value="{{ defaults_form.window_end if defaults_form else global_defaults.window_end }}" required>
+  </label>
+  <p class="meta">Every backup asks for the passcode on the device. Pick a window when someone is
+    awake and near it, or the run will wait and time out.</p>
+  <label class="checkbox-row">
+    <input name="only_when_charging" type="checkbox" value="1"
+      {% if (defaults_form.only_when_charging if defaults_form else global_defaults.only_when_charging) %}checked{% endif %}>
+    Only start scheduled backups while charging
+  </label>
+  <label>Backup interval (hours) <small>(1 to 720)</small>
+    <input name="interval_hours" type="number" min="1" max="720"
+      value="{{ defaults_form.interval_hours if defaults_form else global_defaults.interval_hours }}" required>
+  </label>
+  <label>Overdue after (days) <small>(1 to 60)</small>
+    <input name="overdue_days" type="number" min="1" max="60"
+      value="{{ defaults_form.overdue_days if defaults_form else global_defaults.overdue_days }}" required>
+  </label>
+  <label>Free space threshold (GB) <small>(1 to 10000; a backup refuses to start below this)</small>
+    <input name="free_space_threshold_gb" type="number" min="1" max="10000"
+      value="{{ defaults_form.free_space_threshold_gb if defaults_form else global_defaults.free_space_threshold_gb }}" required>
+  </label>
+  <label>Notice lead time (minutes) <small>(1 to 120; how long before a window's first attempt the "put it on the
+    charger" notice goes out)</small>
+    <input name="notice_lead_minutes" type="number" min="1" max="120"
+      value="{{ defaults_form.notice_lead_minutes if defaults_form else global_defaults.notice_lead_minutes }}" required>
+  </label>
+  <fieldset class="stack">
+    <legend>Generations to keep</legend>
+    <label>Latest generations to keep <small>(0 to 1000)</small>
+      <input name="keep_last" type="number" min="0" max="1000"
+        value="{{ defaults_form.keep_last if defaults_form else retention_defaults.keep_last }}">
+    </label>
+    <label>Daily generations to keep <small>(0 to 1000)</small>
+      <input name="keep_daily" type="number" min="0" max="1000"
+        value="{{ defaults_form.keep_daily if defaults_form else retention_defaults.keep_daily }}">
+    </label>
+    <label>Weekly generations to keep <small>(0 to 1000)</small>
+      <input name="keep_weekly" type="number" min="0" max="1000"
+        value="{{ defaults_form.keep_weekly if defaults_form else retention_defaults.keep_weekly }}">
+    </label>
+    <label>Monthly generations to keep <small>(0 to 1000)</small>
+      <input name="keep_monthly" type="number" min="0" max="1000"
+        value="{{ defaults_form.keep_monthly if defaults_form else retention_defaults.keep_monthly }}">
+    </label>
+    <label>Yearly generations to keep <small>(0 to 1000)</small>
+      <input name="keep_yearly" type="number" min="0" max="1000"
+        value="{{ defaults_form.keep_yearly if defaults_form else retention_defaults.keep_yearly }}">
+    </label>
+    <p class="meta">At least one of the above must be greater than 0.</p>
+  </fieldset>
+  <button class="button">Save</button>
+</form>
+{% endblock %}

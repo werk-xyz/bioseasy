@@ -1,0 +1,36 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import section_nav %}
+{% block title %}About · bioseasy{% endblock %}
+{% block content %}
+<h1>About</h1>
+{% if admin_nav %}{{ section_nav(admin_nav, request.url.path, "Admin") }}{% endif %}
+<p>Safe to paste into a public bug report: no notification URLs, secret key, setup token,
+   pair record content, full device identifiers or device names are included.</p>
+
+<dl class="facts">
+  <dt>bioseasy</dt><dd>{{ report.versions.bioseasy }}</dd>
+  <dt>Python</dt><dd>{{ report.versions.python }}</dd>
+  <dt>pymobiledevice3</dt><dd>{{ report.versions.pymobiledevice3 }}</dd>
+  <dt>Engine</dt><dd>{{ report.engine }}</dd>
+  <dt>Platform</dt><dd>{{ report.platform }}</dd>
+  <dt>Storage</dt><dd>{% if report.storage.ok %}<span class="health ok">● Ready</span>{% else %}<span class="health bad">■ {{ report.storage.problems | join("; ") }}</span>{% endif %}</dd>
+  <dt>Database</dt><dd>{{ "present" if report.database.present else "not found" }}</dd>
+  {% if report.database.present %}
+  <dt>Devices</dt><dd>{{ report.devices | length }}</dd>
+  {% endif %}
+</dl>
+
+<h2>Compatibility</h2>
+<p class="lede">Running pymobiledevice3: <strong>{{ report.versions.pymobiledevice3 }}</strong>.</p>
+<ul>
+  {% for row in tested_with %}
+  <li>Tested with {{ row.device }} on {{ row.os_version }}, pymobiledevice3 {{ row.pymobiledevice3_version }}</li>
+  {% endfor %}
+</ul>
+
+<h2>Full report</h2>
+<p>Copy this into your bug report. To include a live device scan, run
+   <code>docker compose exec worker bioseasy diagnose</code> instead - this page does not scan.</p>
+<pre><code>{{ report_text }}</code></pre>
+{% endblock %}

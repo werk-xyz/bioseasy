@@ -1,0 +1,184 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import error_list %}
+{% block title %}Settings · {{ device.name or device.udid }} · bioseasy{% endblock %}
+{% block content %}
+<h1>Settings: {{ device.name or device.udid }}</h1>
+<p class="meta"><a href="/devices/{{ device.udid }}">Back to device</a></p>
+
+{{ error_list(errors, "device-settings-errors") }}
+{% if not errors and saved %}
+<p class="flash">Settings saved.</p>
+{% endif %}
+
+<form method="post" action="/devices/{{ device.udid }}/settings" class="stack" {% if errors %}aria-describedby="device-settings-errors"{% endif %}>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Name <input name="name" value="{{ device.name or '' }}" maxlength="64" required></label>
+  <label>Owner label <small>(optional, shown next to the device)</small>
+    <input name="owner_label" value="{{ device.owner_label or '' }}" maxlength="64">
+  </label>
+  <fieldset class="stack">
+    <legend>Backup interval</legend>
+    <label class="checkbox-row">
+      <input type="radio" name="interval_mode" value="default" {% if interval_mode != "custom" %}checked{% endif %}
+        onchange="document.getElementById('interval-custom').hidden = true">
+      Use the global default ({{ global_defaults.interval_hours }} hours)
+    </label>
+    <label class="checkbox-row">
+      <input type="radio" name="interval_mode" value="custom" {% if interval_mode == "custom" %}checked{% endif %}
+        onchange="document.getElementById('interval-custom').hidden = false">
+      Custom
+    </label>
+    <div id="interval-custom" {% if interval_mode != "custom" %}hidden{% endif %}>
+      <label>Backup interval (hours) <small>(1 to 720)</small>
+        <input name="interval_hours" type="number" min="1" max="720"
+          value="{{ device.interval_hours if device.interval_hours is not none else global_defaults.interval_hours }}">
+      </label>
+    </div>
+  </fieldset>
+  <fieldset class="stack">
+    <legend>Generations to keep</legend>
+    <label class="checkbox-row">
+      <input type="radio" name="retention_mode" value="default" {% if retention_mode != "custom" %}checked{% endif %}
+        onchange="document.getElementById('retention-custom').hidden = true">
+      Global defaults ({{ retention_defaults.keep_last }} latest, {{ retention_defaults.keep_daily }} daily,
+      {{ retention_defaults.keep_weekly }} weekly, {{ retention_defaults.keep_monthly }} monthly,
+      {{ retention_defaults.keep_yearly }} yearly)
+    </label>
+    <label class="checkbox-row">
+      <input type="radio" name="retention_mode" value="custom" {% if retention_mode == "custom" %}checked{% endif %}
+        onchange="document.getElementById('retention-custom').hidden = false">
+      Custom
+    </label>
+    <div id="retention-custom" {% if retention_mode != "custom" %}hidden{% endif %}>
+      <label>Latest generations to keep <small>(0 to 1000)</small>
+        <input name="keep_last" type="number" min="0" max="1000"
+          value="{{ device.keep_last if device.keep_last is not none else retention_defaults.keep_last }}">
+      </label>
+      <label>Daily generations to keep <small>(0 to 1000)</small>
+        <input name="keep_daily" type="number" min="0" max="1000"
+          value="{{ device.keep_daily if device.keep_daily is not none else retention_defaults.keep_daily }}">
+      </label>
+      <label>Weekly generations to keep <small>(0 to 1000)</small>
+        <input name="keep_weekly" type="number" min="0" max="1000"
+          value="{{ device.keep_weekly if device.keep_weekly is not none else retention_defaults.keep_weekly }}">
+      </label>
+      <label>Monthly generations to keep <small>(0 to 1000)</small>
+        <input name="keep_monthly" type="number" min="0" max="1000"
+          value="{{ device.keep_monthly if device.keep_monthly is not none else retention_defaults.keep_monthly }}">
+      </label>
+      <label>Yearly generations to keep <small>(0 to 1000)</small>
+        <input name="keep_yearly" type="number" min="0" max="1000"
+          value="{{ device.keep_yearly if device.keep_yearly is not none else retention_defaults.keep_yearly }}">
+      </label>
+      <p class="meta">At least one of the above must be greater than 0.</p>
+    </div>
+    <p class="meta">{{ retention_preview }} Without hard link support only the latest generation is
+      kept, whatever this policy says.</p>
+  </fieldset>
+  <fieldset class="stack">
+    <legend>Scheduled window</legend>
+    <label class="checkbox-row">
+      <input type="radio" name="window_mode" value="default" {% if window_mode != "custom" %}checked{% endif %}
+        onchange="document.getElementById('window-custom').hidden = true">
+      Use the global default ({{ global_defaults.window_start }}-{{ global_defaults.window_end }})
+    </label>
+    <label class="checkbox-row">
+      <input type="radio" name="window_mode" value="custom" {% if window_mode == "custom" %}checked{% endif %}
+        onchange="document.getElementById('window-custom').hidden = false">
+      Custom
+    </label>
+    <div id="window-custom" {% if window_mode != "custom" %}hidden{% endif %}>
+      <label>Scheduled window start <small>(local time)</small>
+        <input name="window_start" type="time" value="{{ device.window_start or global_defaults.window_start }}">
+      </label>
+      <label>Scheduled window end
+        <input name="window_end" type="time" value="{{ device.window_end or global_defaults.window_end }}">
+      </label>
+    </div>
+    <p class="meta">Every backup asks for the passcode on the device. Pick a window when someone is
+      awake and near it, or the run will wait and time out.</p>
+  </fieldset>
+  <fieldset class="stack">
+    <legend>Only while charging</legend>
+    <label class="checkbox-row">
+      <input type="radio" name="charging_mode" value="default" {% if charging_mode != "custom" %}checked{% endif %}
+        onchange="document.getElementById('charging-custom').hidden = true">
+      Use the global default (currently {{ "on" if global_defaults.only_when_charging else "off" }})
+    </label>
+    <label class="checkbox-row">
+      <input type="radio" name="charging_mode" value="custom" {% if charging_mode == "custom" %}checked{% endif %}
+        onchange="document.getElementById('charging-custom').hidden = false">
+      Custom
+    </label>
+    <div id="charging-custom" {% if charging_mode != "custom" %}hidden{% endif %}>
+      <label class="checkbox-row">
+        <input name="only_when_charging" type="checkbox" value="1"
+          {% if device.only_when_charging %}checked{% endif %}>
+        Only start scheduled backups while charging
+      </label>
+    </div>
+  </fieldset>
+  <fieldset class="stack">
+    <legend>Overdue after</legend>
+    <label class="checkbox-row">
+      <input type="radio" name="overdue_mode" value="default" {% if overdue_mode != "custom" %}checked{% endif %}
+        onchange="document.getElementById('overdue-custom').hidden = true">
+      Use the global default ({{ global_defaults.overdue_days }} days)
+    </label>
+    <label class="checkbox-row">
+      <input type="radio" name="overdue_mode" value="custom" {% if overdue_mode == "custom" %}checked{% endif %}
+        onchange="document.getElementById('overdue-custom').hidden = false">
+      Custom
+    </label>
+    <div id="overdue-custom" {% if overdue_mode != "custom" %}hidden{% endif %}>
+      <label>Overdue after (days) <small>(1 to 60)</small>
+        <input name="overdue_days" type="number" min="1" max="60"
+          value="{{ device.overdue_days if device.overdue_days is not none else global_defaults.overdue_days }}">
+      </label>
+    </div>
+  </fieldset>
+  <label>Fixed address <small>(optional; IP address or hostname, tried when Bonjour cannot reach the device;
+    leave empty to clear)</small>
+    <input name="host" value="{{ device.host or '' }}" maxlength="253" spellcheck="false">
+  </label>
+  <button class="button">Save</button>
+</form>
+
+{% if user.is_admin %}
+<h2>Owner</h2>
+<p class="meta">Whose device this is: it appears in their device list, and their Log and
+  notifications cover it. Only an admin sees this section.</p>
+<form method="post" action="/devices/{{ device.udid }}/settings/owner" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Owner
+    <select name="owner_id">
+      <option value="" {% if not device.owner_id %}selected{% endif %}>No owner</option>
+      {% for u in local_users %}
+      <option value="{{ u.id }}" {% if device.owner_id == u.id %}selected{% endif %}>{{ u.username }} ({{ u.role }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="button">Save owner</button>
+</form>
+{% endif %}
+
+{% if device.encryption_enabled_at or password_change_error %}
+{% include "_password_change.html" %}
+{% endif %}
+
+{% include "_netcheck.html" %}
+
+{% set scope = "device" %}
+{% set base_url = "/devices/" + device.udid %}
+{% include "_connectors_section.html" %}
+
+<h2>Test all notifications</h2>
+<p class="meta">Sends to every connector above and the admin alert connectors.</p>
+<div id="notify-test">
+  <form hx-post="/devices/{{ device.udid }}/settings/test-notification" hx-target="#notify-test" hx-swap="outerHTML">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="button">Send test message</button>
+  </form>
+</div>
+{% endblock %}

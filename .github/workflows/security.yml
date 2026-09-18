@@ -1,0 +1,123 @@
+# The automated half of this project's security work: secrets, code patterns, dependency
+# advisories and the Dockerfile. The published image is scanned where it is built, in
+# container.yml. Every job is blocking - a finding fails the run rather than filing a note.
+#
+# What none of this catches is broken authorization: a scanner sees code and traffic, not which
+# user is meant to see which row. That takes a manual review of every route, after any change to
+# authentication, permissions or routes.
+#
+# Every tool is a pinned release binary checked against its SHA-256, not a third-party action on a
+# movable tag: an action tag can be re-pointed at different code, a checksum cannot.
+name: Security
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    # Advisories appear without anyone touching the code, so this runs weekly as well.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks scans history, not only the working tree: a secret committed and removed
+          # later is exactly the case it exists for.
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          v=8.30.1
+          s=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSfL -o /tmp/gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${v}/gitleaks_${v}_linux_x64.tar.gz"
+          echo "${s}  /tmp/gitleaks.tgz" | sha256sum -c -
+          sudo tar xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks
+          gitleaks version
+      # Reads .gitleaks.toml. -v, or a finding prints "leaks found: 1" and nothing that says where;
+      # --redact keeps the value itself out of the log.
+      - name: Scan git history for secrets
+        run: gitleaks git . --no-banner --redact -v
+
+  code:
+    name: Code patterns (semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # pip is semgrep's only real distribution channel; there is no Linux release binary.
+      - run: pip install --quiet semgrep==1.177.0
+      - name: Scan for dangerous code patterns
+        run: semgrep scan --config=p/python --config=p/fastapi --config=p/security-audit --metrics=off --error .
+
+  dependencies:
+    name: Dependency advisories (osv-scanner)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install osv-scanner
+        run: |
+          set -euo pipefail
+          v=2.6.0
+          s=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+          curl -sSfL -o /tmp/osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/v${v}/osv-scanner_linux_amd64"
+          echo "${s}  /tmp/osv-scanner" | sha256sum -c -
+          sudo install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
+      - name: Scan uv.lock for known advisories
+        run: osv-scanner scan source --lockfile=uv.lock
+
+  dockerfile:
+    name: Dockerfile lint (hadolint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install hadolint
+        run: |
+          set -euo pipefail
+          v=2.15.1
+          s=c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
+          curl -sSfL -o /tmp/hadolint \
+            "https://github.com/hadolint/hadolint/releases/download/v${v}/hadolint-linux-x86_64"
+          echo "${s}  /tmp/hadolint" | sha256sum -c -
+          sudo install -m 0755 /tmp/hadolint /usr/local/bin/hadolint
+      # Ignored rules are justified inline in the Dockerfile, next to the line they excuse.
+      - name: Lint Dockerfile
+        run: hadolint Dockerfile
+
+  filesystem:
+    name: Dependencies and misconfiguration (trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install trivy
+        run: |
+          set -euo pipefail
+          v=0.74.0
+          s=2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+          curl -sSfL -o /tmp/trivy.tgz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${v}/trivy_${v}_Linux-64bit.tar.gz"
+          echo "${s}  /tmp/trivy.tgz" | sha256sum -c -
+          sudo tar xzf /tmp/trivy.tgz -C /usr/local/bin trivy
+      # trivy.yaml carries the scanners, the HIGH/CRITICAL threshold and the skip-dirs.
+      - name: Scan dependencies and Dockerfile misconfiguration
+        run: trivy fs --config trivy.yaml .
+      # An inventory, not a gate: --exit-code 0 overrides trivy.yaml's for this one call.
+      - name: Generate an SBOM of the repository's dependencies
+        run: trivy fs --exit-code 0 --format cyclonedx --output sbom-deps.cdx.json .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bioseasy-dependency-sbom
+          path: sbom-deps.cdx.json
+          retention-days: 14

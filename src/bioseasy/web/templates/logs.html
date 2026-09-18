@@ -1,0 +1,164 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import status_pill, section_nav %}
+{% block title %}Logs · bioseasy{% endblock %}
+{% block content %}
+<h1>Logs</h1>
+{% if admin_nav %}{{ section_nav(admin_nav, request.url.path, "Admin") }}{% endif %}
+{# Two literal links rather than a loop over the view tuple: with exactly two views a variable in
+   the href buys nothing and trips the var-in-href lint rule. #}
+<nav class="section-nav" aria-label="Log view">
+  <ul>
+    <li><a href="/admin/logs?view=system" {% if view != "application" %}aria-current="page"{% endif %}>System log</a></li>
+    <li><a href="/admin/logs?view=application" {% if view == "application" %}aria-current="page"{% endif %}>Application log</a></li>
+  </ul>
+</nav>
+{% if view == "application" %}
+<p class="meta">What happened to the devices on this server: every finished backup and every
+  generation check, across all owners, newest first. Each user sees the same events for their own
+  devices under Log in the main menu.</p>
+<form method="get" action="/admin/logs" class="filters">
+  <input type="hidden" name="view" value="application">
+  <label>Event
+    <select name="kind">
+      <option value="">All events</option>
+      {% for k in kinds %}
+      <option value="{{ k }}" {% if filter_kind == k %}selected{% endif %}>{{ kind_labels[k] }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Device
+    <select name="device">
+      <option value="">All devices</option>
+      {% for d in scope_devices %}
+      <option value="{{ d.udid }}" {% if filter_device == d.udid %}selected{% endif %}>{{ d.name or d.udid }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="button">Filter</button>
+</form>
+{% if entries %}
+<table class="runs">
+  <caption class="visually-hidden">Device events across all owners</caption>
+  <thead>
+    <tr>
+      <th scope="col">Time</th>
+      <th scope="col">Event</th>
+      <th scope="col">Device</th>
+      <th scope="col">Owner</th>
+      <th scope="col">Outcome</th>
+      <th scope="col">Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td><time datetime="{{ e.at }}">{{ e.at | ago }}</time></td>
+      <td>
+        {{ e.label }}
+        {% if e.snapshot_name %}<span class="meta">{{ e.snapshot_name }}</span>{% endif %}
+      </td>
+      <td>{{ e.device_name }}</td>
+      <td>{{ e.owner_name }}</td>
+      <td>{{ status_pill(e.outcome_class, e.outcome_word) }}</td>
+      <td>
+        {{ e.detail }}
+        {% if e.trigger %}<span class="meta">{{ e.trigger }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<nav class="pager" aria-label="Log pages">
+  {% set qs = {"view": "application", "kind": filter_kind, "device": filter_device} %}
+  {% if event_page.page > 1 %}
+  <a href="/admin/logs?{{ dict(qs, page=event_page.page - 1) | urlencode }}">Newer</a>
+  {% endif %}
+  <span class="meta">Page {{ event_page.page }} of {{ ((event_page.total - 1) // event_page.page_size) + 1 if event_page.total else 1 }} ({{ event_page.total }} events)</span>
+  {% if event_page.has_more %}
+  <a href="/admin/logs?{{ dict(qs, page=event_page.page + 1) | urlencode }}">Older</a>
+  {% endif %}
+</nav>
+{% else %}
+<p>No events match this filter.</p>
+{% endif %}
+{% else %}
+{# Three sentences became one. What an admin needs here is: what is in it, and that it is safe to
+   read and to paste. The "admin-only, never shown to a member" clause described an access rule to
+   the only people who can already see the page. #}
+<p class="lede">Warnings and errors from bioseasy itself, newest first, plus a line whenever a
+  backup finishes. Passwords and pairing data are never in it; device ids are shortened.</p>
+<form method="get" action="/admin/logs" class="filters">
+  <label>Level
+    <select name="level">
+      <option value="">All (warning and above)</option>
+      {% for l in levels %}
+      <option value="{{ l }}" {% if filter_level == l %}selected{% endif %}>{{ l.capitalize() }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Process
+    <select name="process">
+      <option value="">Both</option>
+      {% for p in processes %}
+      <option value="{{ p }}" {% if filter_process == p %}selected{% endif %}>{{ p.capitalize() }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Device
+    <select name="device">
+      <option value="">All devices</option>
+      {% for short_udid, name in device_names.items() %}
+      <option value="{{ short_udid }}" {% if filter_device == short_udid %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="button">Filter</button>
+</form>
+{% if log_page.rows %}
+<table class="runs">
+  <caption class="visually-hidden">Log entries</caption>
+  <thead>
+    <tr>
+      <th scope="col">Time</th>
+      <th scope="col">Level</th>
+      <th scope="col">Process</th>
+      <th scope="col">Device</th>
+      <th scope="col">Message</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in log_page.rows %}
+    <tr>
+      <td><time datetime="{{ row.ts }}">{{ row.ts | ago }}</time></td>
+      <td>{{ status_pill('bad' if row.level in ('ERROR', 'CRITICAL') else ('warn' if row.level == 'WARNING' else 'muted'), row.level) }}</td>
+      <td>{{ row.process }}</td>
+      <td>{% if row.udid %}{{ device_names.get(row.udid, row.udid) }}{% else %}<span class="meta">—</span>{% endif %}</td>
+      <td>
+        {{ row.message }}
+        {% if row.traceback %}
+        <details>
+          <summary>Traceback</summary>
+          <pre>{{ row.traceback }}</pre>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<nav class="pager" aria-label="Log pages">
+  {% set qs = {"level": filter_level, "process": filter_process, "device": filter_device} %}
+  {% if log_page.page > 1 %}
+  <a href="/admin/logs?{{ dict(qs, page=log_page.page - 1) | urlencode }}">Newer</a>
+  {% endif %}
+  <span class="meta">Page {{ log_page.page }} of {{ ((log_page.total - 1) // log_page.page_size) + 1 if log_page.total else 1 }} ({{ log_page.total }} entries)</span>
+  {% if log_page.has_more %}
+  <a href="/admin/logs?{{ dict(qs, page=log_page.page + 1) | urlencode }}">Older</a>
+  {% endif %}
+</nav>
+{% else %}
+<p>No log entries match this filter.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

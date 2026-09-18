@@ -1,0 +1,13 @@
+# Build the image from this checkout instead of pulling a published one.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Kept apart from docker-compose.yml so the normal deployment stays a pull: most people running
+# bioseasy want the image, not a compiler, and a compose file that builds by accident turns a
+# two-minute install into a twenty-minute one on a NAS.
+services:
+  bioseasy:
+    build: .
+    image: bioseasy:local
+  worker:
+    image: bioseasy:local

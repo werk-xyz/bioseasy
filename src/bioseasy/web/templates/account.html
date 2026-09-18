@@ -1,0 +1,53 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{% extends "base.html" %}
+{% from "_macros.html" import section_nav %}
+{% block title %}Settings · bioseasy{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+{% if settings_nav %}{{ section_nav(settings_nav, request.url.path, "Settings") }}{% endif %}
+{% include "_scope_note.html" %}
+
+{# Which local account this is, stated first. A single sign-on user never typed a username here -
+   the account was matched or created for them - so without this line they cannot tell which
+   local user their identity landed on. #}
+<h2>Account</h2>
+<dl class="facts">
+  <dt>Username</dt><dd><code>{{ user.username }}</code></dd>
+  <dt>Role</dt><dd>{{ "Admin" if user.is_admin else "Member" }}</dd>
+  {% if links %}
+  <dt>Single sign-on</dt><dd>Your {{ oidc_name }} sign-in is linked to this account.</dd>
+  {% endif %}
+</dl>
+
+<h2>Email address</h2>
+<p class="meta">{% if email %}<code>{{ email }}</code>{% else %}No address is set for this account yet.{% endif %}
+  Single sign-on matches an identity to an account by this address, so only an administrator can
+  change it - ask one if it is wrong or missing.</p>
+
+<h2>Sign-in password</h2>
+{# The disambiguation is the whole point of this sentence - three different passwords meet on this
+   product - but it does not need three clauses to say so. The device's encryption password keeps
+   its pointer, because that is the one people come here looking for. #}
+{# Kept on one line: a wrap inside "backup encryption password" splits the phrase in the rendered
+   HTML, which broke the test that checks this page disambiguates the three passwords. #}
+<p class="meta">Opens this web interface only. Not your Apple ID, and not a device's backup encryption password - that one lives on the device's own settings page.</p>
+{% if has_password %}
+{% if password_changed %}<p class="flash">Password changed. Your other signed-in sessions have been ended; this one stays signed in.</p>{% endif %}
+{% if password_error %}<p class="flash bad">{{ password_error }}</p>{% endif %}
+<form method="post" action="/settings/password" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Current password
+    <input type="password" name="current_password" autocomplete="current-password" required>
+  </label>
+  <label>New password
+    <input type="password" name="new_password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
+  </label>
+  <label>Repeat new password
+    <input type="password" name="new_password2" autocomplete="new-password" minlength="{{ min_password_length }}" required>
+  </label>
+  <button class="button">Change password</button>
+</form>
+{% else %}
+<p class="meta">You sign in through {{ oidc_name }}; there is no local password to change here.</p>
+{% endif %}
+{% endblock %}

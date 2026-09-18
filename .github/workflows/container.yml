@@ -1,0 +1,138 @@
+# Builds the container image and publishes it. Build and publish only - this pipeline never
+# deploys anywhere, by design: what runs where is a decision a human makes with a compose file.
+#
+# Tags it produces:
+#   push to main   ->  edge
+#   tag v1.2.3     ->  1.2.3, 1.2, latest
+#
+# One registry for now: GitHub Container Registry, which needs no account beyond the repository
+# itself. Docker Hub is left out on purpose - another account to hold and another credential to
+# rotate - and can be added later without changing anything here but the image list below.
+name: Container
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # arm64 matters here: a lot of home servers and NAS boxes are arm64, and that is exactly
+      # this project's audience. QEMU makes the arm64 layer buildable on an amd64 runner.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch,enable=${{ github.ref == 'refs/heads/main' }},value=edge
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          # A pull request builds but publishes nothing: the point there is to find out that the
+          # image still builds, not to put an unreviewed image into a registry.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Shown in the web UI footer, so a bug report says which build it came from.
+          build-args: GITHUB_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The image that was just pushed, by digest - not a tag, which another run could move in the
+      # meantime. Scanned for HIGH/CRITICAL vulnerabilities (blocking) and inventoried as a
+      # CycloneDX SBOM, which a v* release carries along.
+      - name: Install trivy
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          v=0.74.0
+          s=2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+          curl -sSfL -o /tmp/trivy.tgz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${v}/trivy_${v}_Linux-64bit.tar.gz"
+          echo "${s}  /tmp/trivy.tgz" | sha256sum -c -
+          sudo tar xzf /tmp/trivy.tgz -C /usr/local/bin trivy
+      - name: Scan the published image
+        if: github.event_name != 'pull_request'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+        run: |
+          trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+          trivy image --exit-code 0 --format cyclonedx --output sbom-image.cdx.json "$IMAGE"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: bioseasy-image-sbom
+          path: sbom-image.cdx.json
+          retention-days: 90
+
+  release:
+    # A v* tag also gets a GitHub release, so the tag page says what changed and which image to
+    # pull. The helper app has its own tag and its own release (helper.yml).
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cut the changelog section for this tag
+        id: notes
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # Everything between this version's heading and the next one. Empty output means the
+          # changelog has no section for the tag, which is a mistake worth failing on.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { collecting = 1; next }
+            collecting && /^## \[/ { exit }
+            collecting { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bioseasy-image-sbom
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          # What is inside the image, as CycloneDX - for anyone who has to answer "are we affected"
+          # when the next advisory lands.
+          files: sbom-image.cdx.json
