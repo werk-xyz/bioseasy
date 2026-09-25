@@ -181,4 +181,19 @@
     <button class="button">Send test message</button>
   </form>
 </div>
+
+<h2>Remove this device</h2>
+<p class="meta">Takes the device out of bioseasy: its settings, its history and its pairing. The
+  backups already on disk are <strong>not</strong> deleted - they stay in
+  <code>{{ backup_folder }}</code>, and you can remove that folder yourself if you want them gone.
+  To back this device up again afterwards, pair it again from the Add page.</p>
+{% if remove_error %}<p class="flash bad" role="alert">{{ remove_error }}</p>{% endif %}
+<form method="post" action="/devices/{{ device.udid }}/remove" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Type the device name to confirm
+    <input type="text" name="confirm_name" autocomplete="off" placeholder="{{ device.name or device.udid }}" required>
+  </label>
+  <button class="button danger">Remove device</button>
+</form>
+
 {% endblock %}

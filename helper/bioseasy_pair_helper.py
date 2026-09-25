@@ -102,9 +102,21 @@ async def pair_and_read_record(serial: str, on_status: Callable[[str], None]) ->
             await lockdown.pair(timeout=PAIR_TIMEOUT_SECONDS)
         except PyMobileDevice3Exception as exc:
             raise PairingError(f"Pairing failed: {exc.__class__.__name__}") from exc
-        await lockdown.set_enable_wifi_connections(True)
+        # The pairing is the part that needed a human at the device, so it is never thrown away
+        # because of what comes after it: a locked screen makes lockdownd answer "SetProhibited"
+        # here, and the record would have been lost with it.
         record = dict(lockdown.pair_record or {})
         record.setdefault("WiFiMACAddress", lockdown.wifi_mac_address)
+        try:
+            await lockdown.set_enable_wifi_connections(True)
+        except Exception as exc:  # noqa: BLE001 - nothing here may cost the pairing
+            on_status(
+                f"The device refused to switch Wi-Fi backups on ({exc.__class__.__name__}). A locked"
+                " screen is the usual reason - lockdownd only accepts this while the device is"
+                " unlocked - and a Screen Time or MDM restriction can block it too. The pairing"
+                " itself worked and is being sent; switch Wi-Fi backups on from the setup wizard"
+                " in bioseasy with the device unlocked."
+            )
         udid = lockdown.udid
         name = (lockdown.all_values or {}).get("DeviceName", "")
     finally:
@@ -145,6 +157,17 @@ def send_pair_record(base_url: str, code: str, record: dict, udid: str, device_n
         ) as response:
             return response.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
+        # 404 is the server's one answer for every bad code - unknown, expired or already used -
+        # so that guessing learns nothing from the reply. For someone holding a code that was
+        # simply too old, that alone reads as "something broke", so the advice is added here,
+        # where it costs the server nothing.
+        if exc.code == 404:
+            raise PairingError(
+                "bioseasy did not accept this pairing code. A code is valid for ten minutes and"
+                " for one device only. Open Add a device in bioseasy, start pairing again for a"
+                " fresh code, and run this straight away. The device itself is paired already, so"
+                " it will not ask you to trust this computer a second time."
+            ) from exc
         raise PairingError(f"bioseasy did not accept the pairing: HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
         raise PairingError(f"Could not reach bioseasy at {base_url}: {exc.reason}") from exc

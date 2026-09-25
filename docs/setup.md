@@ -22,9 +22,13 @@ web interface and run from the server's own position instead.
 1. **Paired.** Always done by the time this page is reached: every route that adds a device
    (the fast "Add" path, a finished pairing, an uploaded pair record) only inserts it once a
    pair record exists.
-2. **Wi-Fi connections enabled.** Calls `engine.enable_wifi()` off the request through the same
-   Huey task path as everything else that can block on the device; the page polls the result
-   with htmx. Recorded in `devices.wifi_enabled_at` once it succeeds.
+2. **Wi-Fi connections enabled.** **Only over USB**: this setting is what lets the device accept
+   Wi-Fi connections at all, so a device that is not on the server's cable refuses the very
+   session that would turn it on, and bioseasy says so rather than trying. The usual way round it
+   is the pairing app on your own computer, which switches this on while it pairs - with the
+   device unlocked, or the device refuses that too. Calls `engine.enable_wifi()` off the request
+   through the same Huey task path as everything else that can block on the device; the page
+   polls the result with htmx. Recorded in `devices.wifi_enabled_at` once it succeeds.
 3. **Backup encryption on.** The owner enters a password twice (minimum 8 characters); bioseasy
    never stores it. This step is the one exception to the background path above: it always runs
    as a plain thread in the web process, never through Huey, because Huey's queue is a file on
@@ -66,6 +70,21 @@ done; the device page links back to the checklist while any step is open.
 > `ChangePassword` operation reports a distinct error for "wrong or missing old password". The
 > setup page therefore cannot detect that case on its own and always shows the
 > forgotten-password explanation alongside the encryption step.
+
+## Removing a device
+
+On the device's **Settings** page, at the bottom: type the device's name to confirm, and bioseasy
+forgets it - its settings, its history and its pairing.
+
+**The backups are not deleted.** They stay in `<backup root>/<udid>`, the page names the exact
+folder, and it is yours to delete if you want them gone. Nothing else keeps them: remove the
+folder and they are gone for good.
+
+The pairing does go, and that is deliberate: a pair record is a credential for the device
+(`docs/pairing.md`), and leaving one behind for a device bioseasy no longer shows would be worse
+than useless. To back the device up again later, pair it again from the Add page.
+
+A device that is being backed up right now is not removed; wait for the run to finish.
 
 ## Adding a device again
 

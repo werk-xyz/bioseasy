@@ -46,6 +46,7 @@ from . import (
     connectors,
     db,
     demo_seed,
+    devices,
     diagnostics,
     docs,
     events,
@@ -731,6 +732,9 @@ def create_app(
         # _netcheck.html; defaulted here so a render() call that forgot it (a form error
         # re-render, a partial unrelated to the connectivity check) still shows "no result yet"
         # instead of a template error.
+        # Only device_settings.html; defaulted here so every other render of that page (the
+        # plain GET, a saved redirect) does not have to pass it.
+        context.setdefault("remove_error", None)
         context.setdefault("netcheck_run", None)
         context.setdefault("netcheck_return_to", "setup")
         # Only admin_settings.html; defaulted here for the same reason as the connector fields
@@ -2609,6 +2613,33 @@ def create_app(
         # makes visible without a separate flash message.
         return RedirectResponse(f"/devices/{udid}", status_code=303)
 
+    def device_settings_context(conn: sqlite3.Connection, user: auth.User, device: sqlite3.Row) -> dict:
+        """Everything the device settings page renders. Its own route is not the only caller: a
+        form on that page that fails (a removal that was not confirmed, for instance) re-renders
+        the whole page with its error, and must not have to repeat this list."""
+        udid = device["udid"]
+        policy = device_policy(conn, device)
+        return {
+            "user": user,
+            "devices": visible_devices(conn, user),
+            "current_udid": udid,
+            "device": device,
+            "connectors": connectors_context(conn, "device", udid),
+            "global_defaults": backup_defaults.get_global_defaults(conn),
+            "retention_defaults": backup_defaults.get_global_defaults(conn).retention,
+            "retention_preview": retention_preview(udid, policy),
+            # Admin-only: the owner reassignment select. Never computed for a member -
+            # visible_device already 404s a foreign device for them, but this also keeps the local
+            # user list itself out of a member's response entirely, not merely unrendered.
+            "local_users": auth.list_users(conn) if user.is_admin else [],
+            # Named on the page next to "Remove this device": what stays behind, in full, so
+            # nobody has to guess where a year of backups went.
+            "backup_folder": devices.backup_folder(settings.backup_root, udid),
+            **field_modes(device),
+            **password_change_context(conn, device),
+            **netcheck_context(conn, device, return_to="settings"),
+        }
+
     @app.get("/devices/{udid}/settings")
     def device_settings_page(
         udid: str,
@@ -2617,26 +2648,11 @@ def create_app(
         conn: sqlite3.Connection = Depends(get_conn),
     ):
         device = visible_device(conn, user, udid)
-        policy = device_policy(conn, device)
         return render(
             request,
             "device_settings.html",
-            user=user,
-            devices=visible_devices(conn, user),
-            current_udid=udid,
-            device=device,
             saved=request.query_params.get("saved") == "1",
-            connectors=connectors_context(conn, "device", udid),
-            global_defaults=backup_defaults.get_global_defaults(conn),
-            retention_defaults=backup_defaults.get_global_defaults(conn).retention,
-            retention_preview=retention_preview(udid, policy),
-            # Admin-only: the owner reassignment select. Never computed for a member - visible_device
-            # already 404s a foreign device for them, but this also keeps the local user list itself
-            # out of a member's response entirely, not merely unrendered.
-            local_users=auth.list_users(conn) if user.is_admin else [],
-            **field_modes(device),
-            **password_change_context(conn, device),
-            **netcheck_context(conn, device, return_to="settings"),
+            **device_settings_context(conn, user, device),
         )
 
     def password_change_context(conn: sqlite3.Connection, device: sqlite3.Row, *, error: str | None = None) -> dict:
@@ -2732,6 +2748,45 @@ def create_app(
             ),
         )
         return RedirectResponse(f"/devices/{udid}/settings?saved=1", status_code=303)
+
+    @app.post("/devices/{udid}/remove")
+    def device_remove(
+        udid: str,
+        request: Request,
+        form: dict = Depends(csrf_form),
+        user: auth.User = Depends(current_user),
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        """Forget a device: its row, everything keyed to it, and its pair record. The backups on
+        disk are deliberately left alone (devices.py explains why), and the confirmation asks for
+        the device's own name so this cannot happen by a stray click.
+
+        Owner or admin, through visible_device - a foreign device stays indistinguishable from one
+        that does not exist, the same as everywhere else. Refused while a backup is running: the
+        run would keep writing into a device nothing in the UI knows about any more.
+        """
+        device = visible_device(conn, user, udid)
+        if live_backup_is_being_written(conn, udid):
+            return render(
+                request,
+                "device_settings.html",
+                status_code=409,
+                remove_error="A backup is running for this device. Wait for it to finish, or stop it first.",
+                **device_settings_context(conn, user, device),
+            )
+        typed = form.get("confirm_name", "").strip()
+        expected = (device["name"] or udid).strip()
+        if typed != expected:
+            return render(
+                request,
+                "device_settings.html",
+                status_code=400,
+                remove_error=f'To remove this device, type its name exactly: "{expected}".',
+                **device_settings_context(conn, user, device),
+            )
+        devices.remove(conn, pair_records, udid)
+        log.info("device %s... removed by %s", udid[:8], user.username)
+        return RedirectResponse("/", status_code=303)
 
     @app.post("/devices/{udid}/settings/owner")
     def device_settings_owner(

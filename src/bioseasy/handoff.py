@@ -169,9 +169,20 @@ async def main() -> int:
         except PyMobileDevice3Exception as exc:
             print(f"Pairing failed: {{exc.__class__.__name__}}")
             return 1
-        await lockdown.set_enable_wifi_connections(True)
+        # Never let this cost the pairing that just succeeded: a locked screen makes lockdownd
+        # answer "SetProhibited" here, and the record would be lost with it.
         record = dict(lockdown.pair_record or {{}})
         record.setdefault("WiFiMACAddress", lockdown.wifi_mac_address)
+        try:
+            await lockdown.set_enable_wifi_connections(True)
+        except Exception as exc:
+            print(
+                f"The device refused to switch Wi-Fi backups on ({{exc.__class__.__name__}}). A"
+                " locked screen is the usual reason - lockdownd only accepts this while the device"
+                " is unlocked - and a Screen Time or MDM restriction can block it too. The pairing"
+                " itself worked and is being sent; switch Wi-Fi backups on from the setup wizard"
+                " in bioseasy with the device unlocked."
+            )
         udid = lockdown.udid
         name = (lockdown.all_values or {{}}).get("DeviceName", "")
     finally:
@@ -191,6 +202,15 @@ async def main() -> int:
         with urllib.request.urlopen(request, timeout=30) as response:
             print(response.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            print(
+                "bioseasy did not accept this pairing code. A code is valid for {CODE_TTL_MINUTES}"
+                " minutes and"
+                " for one device only. Open Add a device in bioseasy, start pairing again for a"
+                " fresh code, and run this straight away. The device itself is paired already, so"
+                " it will not ask you to trust this computer a second time."
+            )
+            return 1
         print(f"bioseasy did not accept the pairing: HTTP {{exc.code}}")
         return 1
     except urllib.error.URLError as exc:

@@ -580,8 +580,18 @@ class Pmd3Engine:
             raise EngineError("This device is not paired with bioseasy yet")
         host = self._fixed_hosts().get(udid)
         if host:
-            lockdown = await self._connect_fixed_host(host, record)
-            await _require_paired(lockdown)
+            try:
+                lockdown = await self._connect_fixed_host(host, record)
+                await _require_paired(lockdown)
+            except RecursionError as exc:
+                # pymobiledevice3 11.12.5 answers a refused ValidatePair by reconnecting and
+                # validating again, with no limit, so a device that will not accept this record
+                # over Wi-Fi ends as a stack overflow rather than an error. Usually the device
+                # has Wi-Fi lockdown connections switched off, which only a cable can change.
+                raise EngineError(
+                    "The device kept refusing the stored pairing over Wi-Fi. Connect it by cable "
+                    "once and switch Wi-Fi backups on, or pair it again from the Add page."
+                ) from exc
             if on_pair_used:
                 on_pair_used(udid)
             return lockdown
@@ -603,10 +613,18 @@ class Pmd3Engine:
         )
         try:
             await lockdown.pair(timeout=120)
-            await lockdown.set_enable_wifi_connections(True)
             record = dict(lockdown.pair_record or {})
             record.setdefault("WiFiMACAddress", lockdown.wifi_mac_address)
+            # Stored before Wi-Fi connections are switched on, and deliberately so: a device whose
+            # screen locked in the meantime answers that request with lockdownd's "SetProhibited",
+            # and losing the pairing that just succeeded - the part that needs a human at the
+            # device - would be the worse outcome by far. The setup wizard has its own step for
+            # Wi-Fi and reports its own error there.
             pairing.store(self._records, lockdown.udid, pairing.parse(plistlib.dumps(record)))
+            try:
+                await lockdown.set_enable_wifi_connections(True)
+            except PyMobileDevice3Exception as exc:
+                log.info("Paired, but the device refused to enable Wi-Fi connections: %s", exc.__class__.__name__)
         except PairingDialogResponsePendingError as exc:
             raise EngineError("Tap Trust on the device, enter the passcode, then try again") from exc
         except UserDeniedPairingError as exc:
@@ -619,6 +637,19 @@ class Pmd3Engine:
             await lockdown.close()
 
     async def _enable_wifi(self, udid: str, on_pair_used: PairUsedCallback | None = None) -> None:
+        # Only over USB, and that is not a limitation of this code: the switch being set here is
+        # the one that lets a device accept lockdown connections over Wi-Fi at all. With it off,
+        # the device refuses the very session that would turn it on. Tried anyway, the attempt
+        # does not fail cleanly - pymobiledevice3 11.12.5 answers a refused ValidatePair by
+        # reconnecting and validating again, without end, until Python stops it with a
+        # RecursionError and the user sees "Internal error, see the container log".
+        if not any(_same_udid(serial, udid) for serial in await self._usb_serials()):
+            raise EngineError(
+                "Wi-Fi backups can only be switched on while the device is connected by cable, "
+                "because the device refuses Wi-Fi connections until it is. Either plug it into "
+                "this server, or run the pairing app on your own computer again with the device "
+                "unlocked - it switches Wi-Fi backups on while pairing."
+            )
         lockdown = await self._connect(udid, on_pair_used)
         try:
             async with _wifi_heartbeat(lockdown):

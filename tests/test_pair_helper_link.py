@@ -176,3 +176,23 @@ def test_no_hardcoded_release_package_url_in_src():
         if "example.test/releases" in text.lower():
             hits.append(path)
     assert hits == [], f"src/ must not hard-code the release download URL, found in: {hits}"
+
+
+def test_an_expired_code_says_so_and_offers_a_new_one(tmp_path):
+    """A code is valid for ten minutes. When it runs out, the page must say so and point at a new
+    one - not leave a dead code on screen that fails only when somebody has already unlocked their
+    device and tapped Trust for nothing."""
+    client, settings, data_dir = make_client(tmp_path)
+    with client:
+        code, page = get_pair_code_page(client, data_dir)
+        assert "expired" not in page.text.lower()
+        with closing(db.connect(data_dir / "bioseasy.db")) as conn:
+            conn.execute("UPDATE pairing_codes SET expires_at = '2020-01-01T00:00:00Z'")
+            conn.commit()
+        after = client.get(f"/add/pair-code/{code}")
+        assert "This code expired before it was used." in after.text
+        assert 'href="/add"' in after.text
+        # And the poll stops: a fragment that keeps asking would never change its answer.
+        status = client.get(f"/add/pair-code/{code}/status")
+        assert "This code expired before it was used." in status.text
+        assert "hx-trigger" not in status.text

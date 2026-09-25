@@ -40,6 +40,11 @@
     </p>
     {% if wifi_failed %}<p class="flash bad">{{ wifi_action.message }}</p>{% endif %}
     {% if not wifi_done and not wifi_running %}
+    {# Said before the click, not after it fails: the device only accepts this setting over a
+       cable, because the setting is what allows Wi-Fi sessions in the first place. #}
+    <p class="meta">Needs the device on this server's USB port. Paired from your own computer
+      instead? The pairing app switches this on while it pairs - run it again with the device
+      unlocked.</p>
     <form method="post" action="/devices/{{ device.udid }}/setup/wifi"
       hx-post="/devices/{{ device.udid }}/setup/wifi" hx-target="#setup-checklist" hx-swap="outerHTML">
       <input type="hidden" name="csrf" value="{{ csrf }}">

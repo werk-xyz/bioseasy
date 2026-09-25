@@ -941,3 +941,78 @@ def test_netcheck_heartbeat_timeout_still_runs_the_optional_service_port_step(tm
 
 async def _ok(value, detail):
     return value, detail
+
+
+def test_enabling_wifi_without_a_cable_says_why_instead_of_trying(tmp_path, monkeypatch):
+    """The switch being set is the one that lets the device accept Wi-Fi lockdown connections at
+    all, so it can only be set over USB. Attempted over Wi-Fi, pymobiledevice3 11.12.5 does not
+    fail cleanly: it answers a refused ValidatePair by reconnecting and validating again until
+    Python raises RecursionError, and the user sees "Internal error, see the container log"."""
+
+    async def no_usb():
+        return []
+
+    async def must_not_connect(*args, **kwargs):
+        raise AssertionError("no connection may be opened without USB")
+
+    e = pmd3.Pmd3Engine(tmp_path, fixed_hosts=lambda: {UDID: "192.0.2.9"})
+    monkeypatch.setattr(e, "_usb_serials", no_usb)
+    monkeypatch.setattr(e, "_connect", must_not_connect)
+
+    with pytest.raises(pmd3.EngineError, match="connected by cable"):
+        asyncio.run(e._enable_wifi(UDID))
+
+
+def test_a_device_that_keeps_refusing_the_pairing_over_wifi_gets_a_message_not_a_stack_overflow(tmp_path, monkeypatch):
+    """pymobiledevice3's endless reconnect loop reaches Python's recursion limit. Whatever else
+    that is, it is not something to show a user as "Internal error"."""
+
+    async def no_usb():
+        return []
+
+    async def recursing(*args, **kwargs):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    e = pmd3.Pmd3Engine(tmp_path, fixed_hosts=lambda: {UDID: "192.0.2.9"})
+    monkeypatch.setattr(e, "_usb_serials", no_usb)
+    monkeypatch.setattr(e, "_connect_fixed_host", recursing)
+    monkeypatch.setattr(pmd3.pairing, "load", lambda records, udid: {"fake": "record"})
+
+    with pytest.raises(pmd3.EngineError, match="kept refusing the stored pairing"):
+        asyncio.run(e._connect(UDID))
+
+
+def test_a_refused_wifi_switch_never_costs_the_pairing(tmp_path, monkeypatch):
+    """The device asks a human to unlock it and tap Trust; that is the expensive part. When it
+    then refuses to switch Wi-Fi connections on - lockdownd answers "SetProhibited" while the
+    screen is locked - the pair record must already be stored, or the whole trip was wasted."""
+    from pymobiledevice3.exceptions import SetProhibitedError
+
+    stored = {}
+
+    class RefusingLockdown(FakeLockdown):
+        udid = UDID
+        wifi_mac_address = "aa:bb:cc:dd:ee:ff"
+        pair_record = {"HostID": "host"}
+
+        async def pair(self, timeout=120):
+            return None
+
+        async def set_enable_wifi_connections(self, value):
+            raise SetProhibitedError("SetProhibited", UDID, "18.0")
+
+    async def fake_create_using_usbmux(**kwargs):
+        return RefusingLockdown()
+
+    async def one_usb():
+        return [UDID]
+
+    e = pmd3.Pmd3Engine(tmp_path)
+    monkeypatch.setattr(e, "_usb_serials", one_usb)
+    monkeypatch.setattr(pmd3, "create_using_usbmux", fake_create_using_usbmux)
+    monkeypatch.setattr(pmd3.pairing, "parse", lambda data: {"parsed": True})
+    monkeypatch.setattr(pmd3.pairing, "store", lambda records, udid, record: stored.update({udid: record}))
+
+    asyncio.run(e._pair(UDID))  # must not raise
+
+    assert stored == {UDID: {"parsed": True}}

@@ -6,6 +6,30 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A device can be removed again.** Its settings, history and pairing go; the backups on disk
+  stay, and the page names the folder they stay in. The device's name has to be typed to confirm,
+  and a device being backed up right now is not removed. Until now a device that got stuck half
+  set up stayed for good, and its pair record - a credential for that device - stayed with it.
+
+### Fixed
+- **A pairing that worked is no longer thrown away** when the device refuses to switch Wi-Fi
+  backups on afterwards. A locked screen makes the device answer that request with lockdownd's
+  "SetProhibited", and the pair record - the part that needed somebody standing at the device -
+  went with it. The record is stored and sent first now; the pairing app and the one-line command
+  say what happened and what to do.
+- **Switching Wi-Fi backups on without a cable says why** instead of failing as "Internal error".
+  That switch is what lets a device accept Wi-Fi connections at all, so it can only be set over
+  USB. Tried over Wi-Fi, pymobiledevice3 answers a refused pairing check by reconnecting and
+  checking again without end, until Python stops it with a RecursionError. Both the attempt and
+  the recursion now end in a sentence that names the cable.
+- **A device that is removed leaves no identifier behind in a spent pairing code.** The code
+  stays on record as used, as it must; only the device it was spent on is cleared with the device.
+- **A rejected pairing code explains itself.** The server answers every bad code with a bare 404,
+  deliberately, so guessing learns nothing - which left somebody holding a code that was simply
+  too old with no idea. The pairing app and the command now say that a code lasts ten minutes and
+  is good for one device.
+
 ## [1.0.0] - 2026-09-18
 
 The first release. Everything below is new, so it is grouped by what it does for you rather than

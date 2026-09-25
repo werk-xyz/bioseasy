@@ -213,6 +213,7 @@ code { font-family: var(--mono); font-size: .875em; overflow-wrap: anywhere; }
 .button.secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
 .button.secondary:hover { background: var(--surface-sunken); filter: none; }
 .button.quiet { background: none; color: var(--accent); border: 0; padding-inline: .35rem; min-height: 36px; }
+.button.danger { background: var(--bad); color: var(--on-accent); }
 .button.quiet:hover { background: var(--surface-sunken); filter: none; }
 .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: 1rem 0; }
 /* A column of fields is bounded, not stretched to the window: a password box 650px wide tells the

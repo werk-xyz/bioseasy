@@ -1,6 +1,6 @@
 [project]
 name = "bioseasy-pair-helper"
-version = "1.0.0"
+version = "1.0.1"
 description = "Self-contained desktop app for macOS, Windows and Linux: pairs an iPhone/iPad over USB and hands the record to bioseasy."
 requires-python = ">=3.12"
 dependencies = [
