@@ -1,6 +1,6 @@
 [project]
 name = "bioseasy"
-version = "1.0.0"
+version = "1.0.1"
 description = "Self-hosted Wi-Fi backups for iPhone and iPad: encrypted, Finder-compatible, with a small web UI."
 authors = [
     { name = "The bioseasy authors" }

@@ -6,6 +6,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-25
+
 ### Added
 - **A device can be removed again.** Its settings, history and pairing go; the backups on disk
   stay, and the page names the folder they stay in. The device's name has to be typed to confirm,
